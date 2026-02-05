@@ -10,16 +10,43 @@ import Foundation
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var counterVm = CounterViewModelBridge(initial: 0)
-    @StateObject private var listVm = ListViewModelBridge()
+    @StateObject private var appVm: AppViewModelBridge
+    @StateObject private var counterVm: CounterViewModelBridge
+    @StateObject private var listVm: ListViewModelBridge
+    @State private var path: [AppRoute] = []
+
+    init() {
+        let app = AppViewModelBridge(initial: 0)
+        _appVm = StateObject(wrappedValue: app)
+        _counterVm = StateObject(wrappedValue: CounterViewModelBridge(app: app))
+        _listVm = StateObject(wrappedValue: ListViewModelBridge(app: app))
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                counterSection
-                listSection
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    counterSection
+                    listSection
+                }
+                .padding()
             }
-            .padding()
+            .navigationTitle("Cross-Kit Demo")
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case let .listDetail(id, dateCn):
+                    ListDetailView(id: id, dateCn: dateCn)
+                case .summary:
+                    SummaryView(state: appVm.state)
+                }
+            }
+            .onChange(of: appVm.state.route) { route in
+                guard let route else { return }
+                if let appRoute = AppRoute(route: route) {
+                    path.append(appRoute)
+                }
+                appVm.clearRoute()
+            }
         }
     }
 
@@ -105,6 +132,59 @@ struct ContentView: View {
         let count = listVm.items.count
         guard count > 0 else { return }
         _ = listVm.removeAt(index: Int64(count - 1))
+    }
+}
+
+enum AppRoute: Hashable {
+    case listDetail(id: Int64, dateCn: String)
+    case summary
+
+    init?(route: Route) {
+        switch route {
+        case let .listDetail(id, dateCn):
+            self = .listDetail(id: id, dateCn: dateCn)
+        case .summary:
+            self = .summary
+        }
+    }
+}
+
+struct ListDetailView: View {
+    let id: Int64
+    let dateCn: String
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Detail")
+                .font(.title.bold())
+            Text("Item #\(id)")
+                .font(.title2)
+            Text(dateCn)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+    }
+}
+
+struct SummaryView: View {
+    let state: AppState
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Summary")
+                .font(.title.bold())
+            Text("Counter: \(state.counter.value)")
+                .font(.title3)
+            Text("List count: \(state.listLen)")
+                .font(.subheadline)
+            if let last = state.lastItem {
+                Text("Last: #\(last.id) \(last.dateCn)")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
     }
 }
 

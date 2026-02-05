@@ -29,14 +29,22 @@ final class crosskit_example_iosUITests: XCTestCase {
         app.launch()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
-        app.buttons["counter.increment"].tap()
+        tap(app, id: "list.append")
+        tap(app, id: "list.insert")
+        XCTAssertTrue(app.staticTexts["Summary"].waitForExistence(timeout: 2))
+        let backButton = app.navigationBars.buttons.element(boundBy: 0)
+        XCTAssertTrue(backButton.waitForExistence(timeout: 2))
+        backButton.tap()
+        tap(app, id: "list.update")
+        tap(app, id: "list.move")
+        tap(app, id: "list.sort")
+        tap(app, id: "list.remove")
 
-        app.buttons["list.append"].tap()
-        app.buttons["list.insert"].tap()
-        app.buttons["list.update"].tap()
-        app.buttons["list.move"].tap()
-        app.buttons["list.sort"].tap()
-        app.buttons["list.remove"].tap()
+        tap(app, id: "counter.increment")
+        tap(app, id: "counter.increment")
+        tap(app, id: "counter.increment")
+
+        XCTAssertTrue(app.staticTexts["Detail"].waitForExistence(timeout: 2))
     }
 
     @MainActor
@@ -47,5 +55,10 @@ final class crosskit_example_iosUITests: XCTestCase {
         }
     }
 
-    
+    @MainActor
+    private func tap(_ app: XCUIApplication, id: String) {
+        let button = app.buttons[id]
+        XCTAssertTrue(button.waitForExistence(timeout: 2))
+        button.tap()
+    }
 }

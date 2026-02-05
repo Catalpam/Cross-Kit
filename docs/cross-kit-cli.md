@@ -276,6 +276,61 @@ artifact_id = "shared"
 
 ---
 
+## 5.1 当前 Crate 列表（现状梳理）
+
+- `crates/ck-vm-macros`
+  - Cross-Kit 级能力：`#[ck_vm_bridge]` 生成 VM 元数据与 Swift Bridge 源码。
+- `example/shared`
+  - 示例 Rust 共享库（UniFFI + VM 实现）。
+  - 仅依赖 `crates/ck-vm-macros` 来生成桥接元数据。
+- `tools/ck-swift-packager`
+  - SwiftPM / CocoaPods 打包工具，读取 `ck_vm_metadata` 输出。
+
+说明：宏能力属于 Cross-Kit 本体（`crates/ck-vm-macros`），示例工程只作为“使用方”。
+
+---
+
+## 5.2 AppViewModel 与嵌套 VM 架构（建议）
+
+目标：iOS/Android 只做 UI，所有业务状态与跨 VM 逻辑在 Rust 闭环。
+
+核心思路（参考前端状态管理）：
+- 单一状态树（Store）：类似 Redux/Elm，将全局 `AppState` 作为唯一事实来源。
+- 单向数据流：UI 读取 State（或 Selector 视图），事件通过 Action/Intent 上行给 Store。
+- 子 VM 只是“视图切片”：通过 `AppViewModel` 创建，内部仅持有 `Store` 的 `Arc` 与 selector。
+- 跨 VM 协作通过 Store/Effect，不需要层层传递：
+  - 共享 Domain Service（例如 UserSession、Navigation、Sync）作为 Effect 处理器
+  - 或“事件总线”式的 Action（Store 内部统一处理）
+
+推荐结构（Rust）：
+- `AppViewModel`
+  - `state: AppState`
+  - `dispatch(action: AppAction)`
+  - `subscribe(observer)`
+  - `make_counter_vm()` / `make_list_vm()` / `make_xxx_vm()`
+- `Store`
+  - `state: AppState`
+  - `reduce(action) -> (new_state, effects)`
+  - `run_effects(effects)`
+  - `subscribe(selector, observer)` 只推送切片变化（必要时 diff）
+- `ChildViewModel`
+  - 仅暴露 UI 需要的 `get_state()` / `subscribe()`
+  - 内部通过 `Store` 读取/派发
+
+State/Action 方向：
+- State：自上而下（Store -> Child VM -> UI）
+- Event：自下而上（UI -> Child VM -> AppViewModel/Store）
+- 跨 VM：通过 Store 统一调度/Effect 处理，避免子 VM 互持
+
+适配 UniFFI / Swift / Compose：
+- AppViewModel 生成子 VM 的工厂方法（桥接层对外公开）
+- 子 VM Bridge 只负责订阅与事件派发，不直接修改 UI
+- 列表类状态继续使用 diff 推送，减少 FFI 负载
+
+这样在 Rust 侧可以完成跨 VM 逻辑闭环（例如：List 更新后触发 Counter 改变等），UI 仅被动渲染。
+
+---
+
 ## 6. 关键落地清单（短期）
 - [ ] 把 `tools/ck-swift-packager` 接入 CLI（作为 `cross-kit ios package`）
 - [ ] 补齐 Android AAR 自动生成脚本
@@ -286,25 +341,34 @@ artifact_id = "shared"
 
 ## 7. 当前已落地（example/shared）
 
-### 7.1 Counter VM（Rust）
+### 7.1 AppViewModel + Store（Rust）
 路径：`example/shared/src/lib.rs`
 
 已实现：
-- `CounterState`（`value: i32`）
-- `CounterObserver`（`on_state` 回调）
-- `CounterViewModel`：
+- `AppState`：`counter / list_len / last_item / route`
+- `Route`：`ListDetail` / `Summary`
+- `Store`（单一状态源）：统一管理 App/Counter/List 观察者、路由、ActionLog
+- `AppViewModel`：
   - `new(initial: i32)`
-  - `subscribe(observer)`
-  - `increment() -> CounterState`
-  - `get_state() -> CounterState`
+  - `subscribe/unsubscribe`
+  - `clear_route` / `request_summary`
+  - `make_counter_vm` / `make_list_vm`
+  - `action_log`
+- `CounterViewModel`（由 AppViewModel 工厂创建）：
+  - `increment()`：每 3 次触发新增 ListItem + 路由到 `ListDetail`
+- `ListViewModel`（diff 列表）：
+  - Insert/Update/Remove/Move + 批量 diffs + 排序
+  - 列表 index 统一 `i64`
+  - 列表项包含 `timestamp_ms` + 中文日期 `date_cn`
+  - 订阅时推送 `Insert` diffs（不推全量）
+  - 列表从 <2 增长到 >=2 时自动触发 `Summary` 路由（若当前无路由）
 
-用途：作为最小 demo，UI 只绑定 `CounterState` 渲染，点击 +1 触发 `increment()`，Rust 侧广播最新状态。
-
-编译验证：
+编译 & 测试 & 覆盖率：
 ```
-cargo check --manifest-path example/shared/Cargo.toml
+cargo test --manifest-path example/shared/Cargo.toml
+cargo llvm-cov --manifest-path example/shared/Cargo.toml --summary-only
 ```
-结果：0 errors（已通过）
+覆盖率（TOTAL Lines）：97.90%（>=97%）
 
 ### 7.2 Swift Package 打包建议命令
 ```
@@ -332,6 +396,11 @@ example/shared/dist/CrossKitShared/
 - 额外支持：同平台多架构会通过 `lipo` 合并（例如 iOS Simulator arm64 + x86_64）
 - `--swift-bridges` 现在读取 `ck_vm_bridge` 宏生成的元数据（`ck_vm_metadata`），直接写出宏内生成的 Swift 源码（`swift_code`），不再在打包器侧硬编码模板
 - 新增 `crates/ck-vm-macros`：`#[ck_vm_bridge]` 自动收集公开方法签名并生成 Swift Bridge 源码
+- 新增宏能力：
+  - 支持 AppViewModel 工厂创建子 VM（`factory_type` / `factory_method` / `factory_bridge`）
+  - `subscribe` 若返回 `observerId`，Swift Bridge 会在 `deinit` 自动 `unsubscribe`
+  - Observer 通过 `ObserverProxy` 弱引用转发到 `@MainActor`
+  - `Arc<T>` 自动映射为 Swift 的 `TProtocol`
 
 ### 7.3.1 Bridge 生成约定（ck_vm_bridge contract）
 > 目的：规范 VM 的最小形态，让宏和打包器稳定生成 Swift Bridge。
@@ -344,6 +413,10 @@ example/shared/dist/CrossKitShared/
 - 必须有 `get_state() -> StateType`
 - 必须有 `subscribe(observer: Arc<dyn Observer>)`
 - 若有构造参数，需提供 `#[uniffi::constructor] pub fn new(...) -> Arc<Self>`
+- 若子 VM 由 AppViewModel 创建，需在宏参数中声明：
+  - `factory_type = "AppViewModel"`
+  - `factory_method = "make_xxx_vm"`
+  - `factory_bridge = "AppViewModelBridge"`
 - Swift Bridge 默认生成：
   - `@Published state: StateType`
   - `init(...)` 调 `getState()` + `subscribe(...)`
@@ -365,6 +438,7 @@ example/shared/dist/CrossKitShared/
 注意事项：
 - `subscribe`/`new` 不会生成 Swift 方法（避免暴露内部初始化流程）
 - `observer_method` 名称同样遵循 `snake_case` -> `lowerCamelCase`
+- 如果 `subscribe` 返回 `i64` 且存在 `unsubscribe(id: i64)`，Swift Bridge 会生成 `observerId` 并在 `deinit` 自动取消订阅
 
 ### 7.4 已生成的 Swift Package（example/shared）
 已执行：
@@ -384,6 +458,7 @@ cargo run --manifest-path tools/ck-swift-packager/Cargo.toml -- \
 example/shared/dist/CrossKitShared/
   Package.swift
   Sources/CrossKitShared/cross_kit_shared.swift
+  Sources/CrossKitShared/Bridges/AppViewModelBridge.swift
   Sources/CrossKitShared/Bridges/CounterViewModelBridge.swift
   Sources/CrossKitShared/Bridges/ListViewModelBridge.swift
   cross_kit_sharedFFI.xcframework
@@ -399,8 +474,12 @@ example/shared/dist/CrossKitShared/
 - SwiftUI 不再需要本地 Bridge 文件，直接使用包内模板
 
 SwiftUI 示例：
-- 由 Swift Package 生成 `CounterViewModelBridge` / `ListViewModelBridge`
-- 更新 `example/ios/crosskit-example-ios/ContentView.swift` 展示 Counter +1（通过 `vm.state.value` 读值，按钮使用闭包调用 `vm.increment()`）
+- 由 Swift Package 生成 `AppViewModelBridge` / `CounterViewModelBridge` / `ListViewModelBridge`
+- 更新 `example/ios/crosskit-example-ios/ContentView.swift`：
+  - Counter +1（Rust 触发路由 `ListDetail`）
+  - List 增删改移动/排序 demo（diff 推送）
+  - Summary 路由自动触发（列表从 <2 增长到 >=2 时由 Rust 决策）
+  - 按钮带 `accessibilityIdentifier` 便于 UI Test 点击
 
 ### 7.6 iOS 编译验证
 ```
@@ -428,7 +507,7 @@ Rust 单测与覆盖率：
 cargo test --manifest-path example/shared/Cargo.toml
 cargo llvm-cov --all-features --summary-only
 ```
-覆盖率：Lines 98.83%（>=97%）
+覆盖率：TOTAL Lines 97.92%（>=97%）
 
 ### 7.8 iOS 单测与覆盖率
 执行：
@@ -437,15 +516,16 @@ xcodebuild -project example/ios/crosskit-example-ios.xcodeproj \
   -scheme crosskit-example-ios \
   -configuration Debug \
   -destination 'id=A63AE66E-A558-40C5-A937-61AA7712C5E7' \
-  -enableCodeCoverage YES test
+  -derivedDataPath /tmp/crosskit-example-ios-derived \
+  test
 ```
 
 覆盖率查看：
 ```
 xcrun xccov view --report \
-  /Users/zigengm3/Library/Developer/Xcode/DerivedData/crosskit-example-ios-fzbimxcrvxrwndcmlmroughoofzs/Logs/Test/Test-crosskit-example-ios-2026.02.05_09-23-19-+0800.xcresult
+  /tmp/crosskit-example-ios-derived/Logs/Test/Test-crosskit-example-ios-2026.02.06_00-05-51-+0800.xcresult
 ```
-结果：`crosskit-example-ios.app` 97.83%（>=97%）
+结果：`crosskit-example-ios.app` 100%（>=97%）
 
 ---
 
@@ -460,6 +540,13 @@ xcrun xccov view --report \
 - SwiftPM 依赖管理，必须用自写 CLI 生成 Swift bindings + Swift Package。
 - 所有改动必须记录到本 MD（本文档）。
 - Swift Bridge 模板不要写死，要通过 Rust 侧宏生成（参考 uniffi 思路）。
+- 宏生成能力属于 Cross-Kit 本体，example 只是依赖方。
+- 需要 AppViewModel + 子 VM 架构，跨 VM 逻辑在 Rust 闭环，UI 纯渲染。
+- 列表 VM 必须是 diff 推送（不能全量），需要 Move / 批量 diff / 排序变更。
+- 列表 index 统一 `i64`，列表项为时间戳 + 中文日期。
+- ObservableList 实例只能被单个 VM 持有（不共享给多个 VM）。
+- 覆盖率要求：Rust / iOS 都需 >=97%。
+- 路由由 Rust 决策，iOS 仅接受统一路由回调并执行跳转。
 
 ### 8.2 已完成事项
 - 创建 `example/shared` 并实现 Rust Counter VM（`CounterState`/`CounterObserver`/`CounterViewModel`）。
@@ -470,30 +557,44 @@ xcrun xccov view --report \
   - 默认 `xcframework_name = <lib_name>FFI`，避免 SwiftPM 目标名重复。
 - 增加 `--swift-bridges`：读取 `ck_vm_bridge` 产出的 `swift_code`，写出 Swift Bridge 源码（不再在打包器硬编码模板）。
 - 新增 `crates/ck-vm-macros`：`#[ck_vm_bridge]` 自动收集公开方法签名并生成 Swift Bridge 代码（写入 metadata）。
+- 将宏 crate 从 `example/ck-vm-macros` 迁移到 `crates/ck-vm-macros`，示例库通过 path 依赖。
 - `ck_vm_metadata` 新增 `swift_code` 校验测试。
 - 用 CLI 生成 Swift Package：
   - `--targets ios,ios-sim,ios-sim-x86_64 --swift-bridges`
   - 产物 `example/shared/dist/CrossKitShared`（含 `cross_kit_sharedFFI.xcframework` 与 Bridges）。
+- 迁移宏 crate 后重新生成 Swift Package（确保依赖路径正确）。
+- 落地 AppViewModel + Store + Route（`Summary`/`ListDetail`）：
+  - Counter/List VM 由 AppViewModel 工厂创建
+  - Rust 侧 `request_summary` 决策路由
 - iOS 示例接入：
   - 本地 Bridge 文件移除（`example/ios/crosskit-example-ios/CounterViewModel.swift`），改用包内模板代码。
-  - 更新 `example/ios/crosskit-example-ios/ContentView.swift` 为 Counter UI（读 `vm.state.value`，按钮使用闭包调用）。
+  - 更新 `example/ios/crosskit-example-ios/ContentView.swift` 为 Counter + List UI（读 `state`，按钮使用闭包调用）。
   - 手工编辑 `example/ios/crosskit-example-ios.xcodeproj/project.pbxproj`，添加本地 Swift Package 引用和 Frameworks。
   - 测试目标补齐 `CrossKitShared` 包依赖。
-- 新增 List VM（diff 推送 + Move/Batch/排序），Rust 覆盖率 Lines 98.83%。
+- iOS Demo 增加 List UI（增删改移动/排序），并添加按钮 `accessibilityIdentifier`。
+- Summary 路由改为 Rust 自动触发（列表从 <2 增长到 >=2 时）。
+- UI Tests 更新为在第二次插入后等待 Summary 并返回，再继续后续操作。
+- iOS 单测改为 async 等待状态/diff 回调（避免回调异步导致断言失败）。
+- 新增 List VM（diff 推送 + Move/Batch/排序 + index i64 + timestamp/date）。
 - 更新 List Bridge 测试方法名（`insertWithTimestamp`/`updateWithTimestamp`/`moveItem`/`removeAt`）。
-- Rust 覆盖率更新：Lines 98.83%。
-- iOS 单测与覆盖率通过（`crosskit-example-ios.app` 97.83%）。
+- Swift Bridge 生成更新：ObserverProxy + `deinit` 自动取消订阅 + 工厂初始化参数。
+- 重新生成 Swift Package（`example/shared/dist/CrossKitShared`）以包含最新 Rust 逻辑。
+- Rust 覆盖率更新：TOTAL Lines 97.92%（>=97%）。
+- iOS 单测与覆盖率通过（`crosskit-example-ios.app` 100%）。
 
 ### 8.3 运行与验证
-- `cargo llvm-cov --all-features --summary-only` 通过（Lines 98.83%）。
+- `cargo llvm-cov --manifest-path example/shared/Cargo.toml --summary-only` 通过（TOTAL Lines 97.92%）。
 - `xcodebuild test` 通过（iOS Simulator `A63AE66E-A558-40C5-A937-61AA7712C5E7`）。
-- `xcrun xccov view --report .../Test-crosskit-example-ios-2026.02.05_09-23-19-+0800.xcresult`：`crosskit-example-ios.app` 97.83%。
+- `xcrun xccov view --report /tmp/crosskit-example-ios-derived/Logs/Test/Test-crosskit-example-ios-2026.02.06_00-05-51-+0800.xcresult`：`crosskit-example-ios.app` 100%
 - 解决过的问题：
   - Swift `Combine` 未导入导致 `ObservableObject`/`@Published` 报错。
   - XCFramework 名称与 SwiftPM target 名冲突导致 `duplicate target`。
   - Simulator 缺 x86_64 架构导致链接失败。
   - `Button(action: vm.increment)` 返回值不匹配，改为闭包调用。
   - List Bridge 方法名与测试不一致，按桥接方法名更新测试。
+  - `xcodebuild test` 找不到 `iPhone 16`，改用 `iPhone 17 Pro Max` 设备 id。
+  - Swift Bridge 初始化出现 “self used before initialized”，通过 `observer` 改为可选并延后赋值修复。
+  - 异步回调导致单测断言过早，改为 async 等待条件。
 - 当前注意点：
   - Xcode UI 若不显示 Package Dependencies，需确保 `packageProductDependencies` 与 `XCSwiftPackageProductDependency` 正确写入 pbxproj，并重启 Xcode / Reset Package Caches。
 
@@ -505,3 +606,4 @@ xcrun xccov view --report \
 - iOS 工程：`example/ios/crosskit-example-ios.xcodeproj`
 - SwiftUI 入口：`example/ios/crosskit-example-ios/ContentView.swift`
 - Swift Bridge：`example/shared/dist/CrossKitShared/Sources/CrossKitShared/Bridges/*.swift`
+- iOS UI Tests：`example/ios/crosskit-example-iosUITests/crosskit_example_iosUITests.swift`

@@ -1,4 +1,4 @@
-use cross_kit_shared::{CkVmMetadata, CounterViewModel, ListViewModel};
+use cross_kit_shared::{AppViewModel, CkVmMetadata, CounterViewModel, ListViewModel};
 
 fn main() {
     println!("{}", build_metadata_json());
@@ -6,6 +6,7 @@ fn main() {
 
 fn build_metadata_json() -> String {
     let metas = vec![
+        AppViewModel::ck_vm_metadata(),
         CounterViewModel::ck_vm_metadata(),
         ListViewModel::ck_vm_metadata(),
     ];
