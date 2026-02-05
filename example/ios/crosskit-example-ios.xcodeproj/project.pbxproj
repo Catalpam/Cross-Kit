@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		F1DE35328C7946F6BC032850 /* CrossKitShared in Frameworks */ = {isa = PBXBuildFile; productRef = 096B069ED51F453DB4437D21 /* CrossKitShared */; };
+		FB8755B9987D40A19813B41E /* CrossKitShared in Frameworks */ = {isa = PBXBuildFile; productRef = 096B069ED51F453DB4437D21 /* CrossKitShared */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		35C4C67E2F330949000AA255 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -22,10 +27,6 @@
 			remoteInfo = "crosskit-example-ios";
 		};
 /* End PBXContainerItemProxy section */
-
-/* Begin PBXBuildFile section */
-		F1DE35328C7946F6BC032850 /* CrossKitShared in Frameworks */ = {isa = PBXBuildFile; productRef = 096B069ED51F453DB4437D21 /* CrossKitShared */; };
-/* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		35C4C6702F330948000AA255 /* crosskit-example-ios.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "crosskit-example-ios.app"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -65,6 +66,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FB8755B9987D40A19813B41E /* CrossKitShared in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -151,6 +153,7 @@
 			);
 			name = "crosskit-example-iosTests";
 			packageProductDependencies = (
+				096B069ED51F453DB4437D21 /* CrossKitShared */,
 			);
 			productName = "crosskit-example-iosTests";
 			productReference = 35C4C67D2F330949000AA255 /* crosskit-example-iosTests.xctest */;

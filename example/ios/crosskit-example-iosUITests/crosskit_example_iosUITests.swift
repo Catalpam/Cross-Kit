@@ -29,6 +29,14 @@ final class crosskit_example_iosUITests: XCTestCase {
         app.launch()
 
         // Use XCTAssert and related functions to verify your tests produce the correct results.
+        tapIfNeeded(app.buttons["counter.increment"], app: app)
+
+        tapIfNeeded(app.buttons["list.append"], app: app)
+        tapIfNeeded(app.buttons["list.insert"], app: app)
+        tapIfNeeded(app.buttons["list.update"], app: app)
+        tapIfNeeded(app.buttons["list.move"], app: app)
+        tapIfNeeded(app.buttons["list.sort"], app: app)
+        tapIfNeeded(app.buttons["list.remove"], app: app)
     }
 
     @MainActor
@@ -37,5 +45,13 @@ final class crosskit_example_iosUITests: XCTestCase {
         measure(metrics: [XCTApplicationLaunchMetric()]) {
             XCUIApplication().launch()
         }
+    }
+
+    @MainActor
+    private func tapIfNeeded(_ element: XCUIElement, app: XCUIApplication) {
+        if !element.isHittable {
+            app.swipeUp()
+        }
+        element.tap()
     }
 }

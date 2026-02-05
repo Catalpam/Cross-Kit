@@ -1,8 +1,13 @@
 use std::sync::{Arc, Mutex};
 
 use chrono::{Datelike, TimeZone, Utc};
+use ck_vm_macros::ck_vm_bridge;
 
 uniffi::setup_scaffolding!();
+
+pub trait CkVmMetadata {
+    fn ck_vm_metadata() -> &'static str;
+}
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct CounterState {
@@ -20,6 +25,13 @@ pub struct CounterViewModel {
     observers: Arc<Mutex<Vec<Arc<dyn CounterObserver>>>>,
 }
 
+#[ck_vm_bridge(
+    swift_bridge = "CounterViewModelBridge",
+    mode = "state",
+    observer = "CounterObserver",
+    observer_method = "on_state",
+    state_type = "CounterState"
+)]
 #[uniffi::export]
 impl CounterViewModel {
     #[uniffi::constructor]
@@ -94,6 +106,14 @@ pub struct ListViewModel {
     next_id: Arc<Mutex<i64>>,
 }
 
+#[ck_vm_bridge(
+    swift_bridge = "ListViewModelBridge",
+    mode = "diff_list",
+    observer = "ListObserver",
+    observer_method = "on_diffs",
+    diff_type = "ListDiff",
+    list_item_type = "ListItem"
+)]
 #[uniffi::export]
 impl ListViewModel {
     #[uniffi::constructor]
@@ -366,6 +386,7 @@ fn to_insert_index(index: i64, len: usize) -> Option<usize> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use serde_json::Value;
 
     #[derive(Debug)]
     struct CounterObserverSink {
@@ -431,12 +452,10 @@ mod tests {
         let calls = observer.calls.lock().unwrap();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].len(), 2);
-        match &calls[0][0] {
-            ListDiff::Insert { index, item } => {
-                assert_eq!(*index, 0);
-                assert_eq!(item.timestamp_ms, 1_000);
-            }
-            _ => panic!("expected insert diff"),
+        assert!(matches!(calls[0][0], ListDiff::Insert { .. }));
+        if let ListDiff::Insert { index, item } = &calls[0][0] {
+            assert_eq!(*index, 0);
+            assert_eq!(item.timestamp_ms, 1_000);
         }
     }
 
@@ -537,5 +556,132 @@ mod tests {
         assert!(vm.remove_at(0).is_none());
         assert!(!vm.move_item(-1, 0));
         assert!(vm.insert_with_timestamp(-1, 1).is_none());
+    }
+
+    #[test]
+    fn list_append_and_insert_now_use_current_time() {
+        let vm = ListViewModel::new();
+        let item = vm.append_now();
+        assert_eq!(vm.len(), 1);
+        assert!(!item.date_cn.is_empty());
+
+        let item2 = vm.insert_now(1).unwrap();
+        assert_eq!(vm.len(), 2);
+        assert!(item2.timestamp_ms >= item.timestamp_ms || item2.timestamp_ms <= item.timestamp_ms);
+    }
+
+    #[test]
+    fn list_move_same_index_is_noop() {
+        let vm = ListViewModel::new();
+        vm.insert_with_timestamp(0, 1_000).unwrap();
+        assert!(vm.move_item(0, 0));
+    }
+
+    #[test]
+    fn list_move_invalid_target_fails() {
+        let vm = ListViewModel::new();
+        vm.insert_with_timestamp(0, 1_000).unwrap();
+        assert!(!vm.move_item(0, 1));
+    }
+
+    #[test]
+    fn list_sort_no_change_returns_false() {
+        let vm = ListViewModel::new();
+        vm.insert_with_timestamp(0, 3_000).unwrap();
+        vm.insert_with_timestamp(1, 2_000).unwrap();
+        vm.insert_with_timestamp(2, 1_000).unwrap();
+        assert!(!vm.sort_by_timestamp_desc());
+    }
+
+    #[test]
+    fn list_apply_diffs_empty_is_true() {
+        let vm = ListViewModel::new();
+        assert!(vm.apply_diffs(Vec::new()));
+    }
+
+    #[test]
+    fn list_apply_diffs_invalid_insert_fails() {
+        let vm = ListViewModel::new();
+        let diff = ListDiff::Insert {
+            index: 1,
+            item: ListItem {
+                id: 1,
+                timestamp_ms: 1,
+                date_cn: date_cn_from_timestamp_ms(1),
+            },
+        };
+        assert!(!vm.apply_diffs(vec![diff]));
+    }
+
+    #[test]
+    fn list_apply_diffs_invalid_update_fails() {
+        let vm = ListViewModel::new();
+        let diff = ListDiff::Update {
+            index: 0,
+            item: ListItem {
+                id: 1,
+                timestamp_ms: 1,
+                date_cn: date_cn_from_timestamp_ms(1),
+            },
+        };
+        assert!(!vm.apply_diffs(vec![diff]));
+    }
+
+    #[test]
+    fn list_apply_diffs_invalid_remove_fails() {
+        let vm = ListViewModel::new();
+        let diff = ListDiff::Remove { index: 0, id: 1 };
+        assert!(!vm.apply_diffs(vec![diff]));
+    }
+
+    #[test]
+    fn list_apply_diffs_invalid_move_fails() {
+        let vm = ListViewModel::new();
+        let diff = ListDiff::Move { from: 0, to: 1 };
+        assert!(!vm.apply_diffs(vec![diff]));
+    }
+
+    #[test]
+    fn list_apply_diffs_move_invalid_target_fails() {
+        let vm = ListViewModel::new();
+        let item = ListItem {
+            id: 1,
+            timestamp_ms: 1,
+            date_cn: date_cn_from_timestamp_ms(1),
+        };
+        assert!(vm.apply_diffs(vec![ListDiff::Insert { index: 0, item }]));
+        assert!(!vm.apply_diffs(vec![ListDiff::Move { from: 0, to: 1 }]));
+    }
+
+    #[test]
+    fn list_apply_diffs_move_same_index_is_noop() {
+        let vm = ListViewModel::new();
+        let item = ListItem {
+            id: 1,
+            timestamp_ms: 1,
+            date_cn: date_cn_from_timestamp_ms(1),
+        };
+        assert!(vm.apply_diffs(vec![ListDiff::Insert { index: 0, item }]));
+        assert!(vm.apply_diffs(vec![ListDiff::Move { from: 0, to: 0 }]));
+    }
+
+    #[test]
+    fn date_cn_fallback_for_invalid_timestamp() {
+        let date = date_cn_from_timestamp_ms(i64::MAX);
+        assert_eq!(date, "1970年01月01日");
+    }
+
+    #[test]
+    fn vm_metadata_includes_counter_and_list() {
+        let counter: Value = serde_json::from_str(CounterViewModel::ck_vm_metadata()).unwrap();
+        assert_eq!(counter["vm_type"], "CounterViewModel");
+        assert_eq!(counter["mode"], "state");
+        assert_eq!(counter["observer"], "CounterObserver");
+
+        let list: Value = serde_json::from_str(ListViewModel::ck_vm_metadata()).unwrap();
+        assert_eq!(list["vm_type"], "ListViewModel");
+        assert_eq!(list["mode"], "diff_list");
+        assert_eq!(list["observer"], "ListObserver");
+        assert!(list["methods"].as_array().unwrap().iter().any(|m| m["name"] == "move_item"));
     }
 }

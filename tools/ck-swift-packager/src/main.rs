@@ -9,6 +9,7 @@ use std::process::Command;
 use std::collections::BTreeMap;
 use uniffi_bindgen::bindings::SwiftBindingGenerator;
 use uniffi_bindgen::cargo_metadata::CrateConfigSupplier;
+use serde::Deserialize;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Package a UniFFI Rust library into SwiftPM or CocoaPods")]
@@ -52,6 +53,10 @@ struct Args {
     /// Output format
     #[arg(long, value_enum, default_value = "spm")]
     format: PackageFormat,
+
+    /// Generate Swift bridges emitted by ck_vm_bridge metadata
+    #[arg(long)]
+    swift_bridges: bool,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -151,6 +156,10 @@ fn main() -> Result<()> {
     }
     fs::create_dir_all(&sources_dir)?;
     copy_generated_sources(&generated_dir, &sources_dir)?;
+    if args.swift_bridges {
+        let vm_metas = load_vm_metadata(&args.crate_path)?;
+        generate_swift_bridges(&sources_dir, &vm_metas)?;
+    }
 
     match args.format {
         PackageFormat::Spm => {
@@ -553,6 +562,69 @@ fn copy_dir(from: &Path, to: &Path) -> Result<()> {
         } else {
             fs::copy(&path, &dest)?;
         }
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct VmMeta {
+    swift_bridge: String,
+    mode: String,
+    vm_type: String,
+    observer: String,
+    observer_method: String,
+    state_type: String,
+    diff_type: String,
+    list_item_type: String,
+    methods: Vec<VmMethod>,
+    swift_code: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct VmMethod {
+    name: String,
+    args: Vec<VmArg>,
+    ret: String,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Deserialize)]
+struct VmArg {
+    name: String,
+    ty: String,
+}
+
+fn load_vm_metadata(crate_path: &Path) -> Result<Vec<VmMeta>> {
+    let manifest_path = crate_path.join("Cargo.toml");
+    let mut cmd = Command::new("cargo");
+    cmd.arg("run");
+    cmd.args(["--manifest-path", manifest_path.to_str().unwrap()]);
+    cmd.args(["--bin", "ck_vm_metadata"]);
+    cmd.arg("--quiet");
+    let output = cmd.output().context("failed to run ck_vm_metadata")?;
+    if !output.status.success() {
+        bail!("ck_vm_metadata failed");
+    }
+    let stdout = String::from_utf8(output.stdout)?;
+    let metas: Vec<VmMeta> = serde_json::from_str(stdout.trim())
+        .map_err(|err| anyhow!("failed to parse ck_vm_metadata output: {err}"))?;
+    Ok(metas)
+}
+
+fn generate_swift_bridges(sources_dir: &Path, metas: &[VmMeta]) -> Result<()> {
+    let bridges_dir = sources_dir.join("Bridges");
+    fs::create_dir_all(&bridges_dir)?;
+
+    for meta in metas {
+        let content = meta
+            .swift_code
+            .as_deref()
+            .filter(|code| !code.trim().is_empty())
+            .ok_or_else(|| anyhow!("swift_code missing for {}", meta.vm_type))?;
+        let filename = format!("{}.swift", meta.swift_bridge);
+        fs::write(bridges_dir.join(filename), content)?;
     }
     Ok(())
 }
