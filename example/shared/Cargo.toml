@@ -1,0 +1,12 @@
+[package]
+name = "shared"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "cross_kit_shared"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+chrono = "0.4"
+uniffi = "0.29"

@@ -1,0 +1,10 @@
+# 统一管理宽度设置，但不包含 comment_width
+use_small_heuristics = "MAX"
+# 在match分支中，如果包含了块，也需要加逗号以示分隔
+match_block_trailing_comma = true
+# 当使用 extern 指定外部函数时，不需要显式指定 C-ABI ，默认就是 C-ABI
+force_explicit_abi = false
+# 如果项目只在 Unix 平台下跑，可以设置该项为 Unix，表示换行符只依赖 Unix
+newline_style = "Unix"
+# 不要将多个 Derive 宏合并为同一行
+merge_derives = false

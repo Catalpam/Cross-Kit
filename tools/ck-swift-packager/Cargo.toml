@@ -1,0 +1,11 @@
+[package]
+name = "ck-swift-packager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+camino = "1.1"
+cargo_metadata = "0.19"
+clap = { version = "4.5", features = ["derive"] }
+uniffi_bindgen = "0.29"

@@ -1,0 +1,63 @@
+[package]
+name = "sigsong-sdk"
+version = "0.1.0"
+edition = "2024"
+resolver = "2"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["staticlib", "lib", "cdylib"]
+name = "sig_song_sdk"
+
+[lints.rust]
+unused = "allow"
+
+[dependencies]
+chrono = "0.4"
+uniffi = "0.29"
+tokio = { workspace = true, features = ["full"] }
+reqwest = "0.12.5"
+prost = { workspace = true }
+bytes = { workspace = true }
+thiserror = "2.0"
+lazy_static = { workspace = true }
+sqlx = { workspace = true, features = ["sqlite", "runtime-tokio"] }
+openssl = { version = "0.10", features = ["vendored"] }
+prost-build = { workspace = true }
+zstd = { workspace = true }
+log = "0.4.20"
+uuid = { version = "1.10.0", features = [
+    "v4",
+    "fast-rng",
+    "macro-diagnostics",
+] }
+rand = "0.9"
+wana_kana = "4"
+serde_json = "1.0"
+uniffi_bindgen = { version = "0.29", optional = true }
+camino = { version = "1.2", optional = true }
+
+[features]
+default = []
+binding-generator = ["uniffi_bindgen", "camino"]
+
+[build-dependencies]
+prost-build = { workspace = true }
+uniffi = { version = "0.29", features = ["build"] }
+uniffi_bindgen = { version = "0.29" }
+openssl = { version = "0.10", features = ["vendored"] }
+
+[dev-dependencies]
+uniffi_bindgen = "0.29"
+camino = "1.2"
+
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+libsqlite3-sys = { version = "0.30.1", features = ["bundled-sqlcipher"] }
+
+[target.'cfg(not(any(target_os = "ios", target_os = "macos")))'.dependencies]
+libsqlite3-sys = { version = "0.30.1", features = ["bundled"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi_bindgen.rs"

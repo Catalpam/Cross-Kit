@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS current_user (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    avatar_key TEXT NOT NULL,
+    token TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

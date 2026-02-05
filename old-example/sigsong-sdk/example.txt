@@ -1,0 +1,68 @@
+请帮我分析下面的这些歌词, 歌词每行为一句
+输出为json，每句歌词分别输出，具体格式如下：
+Example
+{
+  "lyrics": [
+    {
+      "lyric": "食べました",
+      "translation": {
+         "zh_cn": "我吃了"
+      },
+      "words": [
+        {
+          "text": "食べ",
+          "translation": "吃",
+          "pronounce": "たべ",
+          "word_type": "VERB",
+          "base_form": "食べる",
+          "loanword": ""
+        },
+        {
+          "text": "ました",
+          "translation": {
+             "zh_cn": "表示过去时态"
+          },
+          "pronounce": "ました",
+          "word_type": "Particle",
+          "base_form": "",
+          "loanword": ""
+        }
+      ],
+    }
+  ]
+}
+请直接输出json内容，不要输出其他多余的信息
+
+
+
+注意分析时关注下面几个点：
+1. 歌词的直接翻译（翻译成中文）
+2. 歌词中的各种语素，语素需要指出语素的语法类型、含义，如果存在变形需要指出其原型是什么。
+3. 歌词中涉及到的语法和句子的语法结构
+
+
+
+请帮我分析下面的这些歌词, 歌词每行为一句
+
+输出为json，每句歌词分别输出，具体格式如下：
+{
+  "lyrics": [
+    {
+      "lyric": string, // 歌词文本
+      "translation": string, // 歌词翻译，翻译成中文
+      "words": [
+        {
+          "word": string, // 单词原文
+          "translation": string, // 单词翻译
+          "pronounce": string, // 单词发音，使用平假名标注，不要使用罗马字标注
+          "word_type": "Noun|Verb|Adjective|Adverb|Pronoun|Preposition|Conjunction|Article|Numeral|Interjection|AdnominalAdjective|Particle|MeasureWord", // 单词类型, 枚举值为这几个选项中的一个
+          "base_form": string, // 如果存在单词原型需要指出，否则直接传空
+          "loanword": string // 单词对应的外来语，不是外来语时直接传空
+        }
+      ],
+      "grammar": string, // 这句话的语法教学，至少需要指出歌词的语法结构，以及其中涉及到的语法知识
+    }
+  ]
+}
+
+请直接输出json内容，不要输出其他多余的信息

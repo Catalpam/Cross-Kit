@@ -1,0 +1,2491 @@
+{
+  "name": "spiral",
+  "id": "longman-spiral",
+  "version": 1,
+  "album": {
+    "id": "longman-spiral",
+    "name": "spiral",
+    "cover_link": "https://bkimg.cdn.bcebos.com/pic/fd039245d688d43f8794ceb13149c51b0ef41bd58d63?x-bce-process=image/format,f_auto/",
+    "artist": [
+      {
+        "id": "longman-jp",
+        "name": "Longman",
+        "type": "singer"
+      }
+    ]
+  },
+  "lyrics": [
+    {
+      "text": "描いた地図は引き裂いた",
+      "translation": {
+        "zh_cn": "我撕碎了画好的地图"
+      },
+      "words": [
+        {
+          "text": "描いた",
+          "translation": {
+            "zh_cn": "画好的"
+          },
+          "pronounce": "えがいた",
+          "word_type": 2,
+          "base_form": "描く",
+          "loanword": ""
+        },
+        {
+          "text": "地図",
+          "translation": {
+            "zh_cn": "地图"
+          },
+          "pronounce": "ちず",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "引き裂いた",
+          "translation": {
+            "zh_cn": "撕裂了"
+          },
+          "pronounce": "ひきさいた",
+          "word_type": 2,
+          "base_form": "引き裂く",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "世界はあの日のまま",
+      "translation": {
+        "zh_cn": "世界还是那个日子的样子"
+      },
+      "words": [
+        {
+          "text": "世界",
+          "translation": {
+            "zh_cn": "世界"
+          },
+          "pronounce": "せかい",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "あの日",
+          "translation": {
+            "zh_cn": "那一天"
+          },
+          "pronounce": "あのひ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "まま",
+          "translation": {
+            "zh_cn": "样子"
+          },
+          "pronounce": "まま",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "僕はまた",
+      "translation": {
+        "zh_cn": "我又"
+      },
+      "words": [
+        {
+          "text": "僕",
+          "translation": {
+            "zh_cn": "我"
+          },
+          "pronounce": "ぼく",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "また",
+          "translation": {
+            "zh_cn": "又"
+          },
+          "pronounce": "また",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "誰かのせいにした",
+      "translation": {
+        "zh_cn": "把责任推给了别人"
+      },
+      "words": [
+        {
+          "text": "誰か",
+          "translation": {
+            "zh_cn": "别人"
+          },
+          "pronounce": "だれか",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "せい",
+          "translation": {
+            "zh_cn": "责任"
+          },
+          "pronounce": "せい",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "にした",
+          "translation": {
+            "zh_cn": "推给了"
+          },
+          "pronounce": "にした",
+          "word_type": 2,
+          "base_form": "する",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "嫌になっちゃうな",
+      "translation": {
+        "zh_cn": "感到厌烦了呢"
+      },
+      "words": [
+        {
+          "text": "嫌",
+          "translation": {
+            "zh_cn": "厌烦"
+          },
+          "pronounce": "いや",
+          "word_type": 3,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "なっちゃう",
+          "translation": {
+            "zh_cn": "变得"
+          },
+          "pronounce": "なっちゃう",
+          "word_type": 2,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "な",
+          "translation": {
+            "zh_cn": ""
+          },
+          "pronounce": "な",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "このまま何かを待ち続けるフリするの",
+      "translation": {
+        "zh_cn": "就这样继续假装等待着什么吗"
+      },
+      "words": [
+        {
+          "text": "このまま",
+          "translation": {
+            "zh_cn": "就这样"
+          },
+          "pronounce": "このまま",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "何か",
+          "translation": {
+            "zh_cn": "什么"
+          },
+          "pronounce": "なにか",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "を",
+          "translation": {
+            "zh_cn": ""
+          },
+          "pronounce": "を",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "待ち続ける",
+          "translation": {
+            "zh_cn": "继续等待"
+          },
+          "pronounce": "まちつづける",
+          "word_type": 2,
+          "base_form": "待ち続ける",
+          "loanword": ""
+        },
+        {
+          "text": "フリ",
+          "translation": {
+            "zh_cn": "假装"
+          },
+          "pronounce": "ふり",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "する",
+          "translation": {
+            "zh_cn": "做"
+          },
+          "pronounce": "する",
+          "word_type": 2,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": ""
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "ここから僕はやりなおせますか",
+      "translation": {
+        "zh_cn": "从这里开始，我能重新开始吗"
+      },
+      "words": [
+        {
+          "text": "ここ",
+          "translation": {
+            "zh_cn": "这里"
+          },
+          "pronounce": "ここ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "から",
+          "translation": {
+            "zh_cn": "从"
+          },
+          "pronounce": "から",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "僕",
+          "translation": {
+            "zh_cn": "我"
+          },
+          "pronounce": "ぼく",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "やりなおせますか",
+          "translation": {
+            "zh_cn": "能重新开始吗"
+          },
+          "pronounce": "やりなおせますか",
+          "word_type": 2,
+          "base_form": "やりなおす",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "どこまでも行ける気がした",
+      "translation": {
+        "zh_cn": "感觉可以走到任何地方"
+      },
+      "words": [
+        {
+          "text": "どこ",
+          "translation": {
+            "zh_cn": "任何地方"
+          },
+          "pronounce": "どこ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "までも",
+          "translation": {
+            "zh_cn": "甚至"
+          },
+          "pronounce": "までも",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "行ける",
+          "translation": {
+            "zh_cn": "可以走"
+          },
+          "pronounce": "いける",
+          "word_type": 2,
+          "base_form": "行く",
+          "loanword": ""
+        },
+        {
+          "text": "気",
+          "translation": {
+            "zh_cn": "感觉"
+          },
+          "pronounce": "き",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "がした",
+          "translation": {
+            "zh_cn": "觉得"
+          },
+          "pronounce": "がした",
+          "word_type": 2,
+          "base_form": "する",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "あの時の僕はどこだ",
+      "translation": {
+        "zh_cn": "那时的我在哪里"
+      },
+      "words": [
+        {
+          "text": "あの時",
+          "translation": {
+            "zh_cn": "那时"
+          },
+          "pronounce": "あのとき",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "僕",
+          "translation": {
+            "zh_cn": "我"
+          },
+          "pronounce": "ぼく",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "在"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "どこ",
+          "translation": {
+            "zh_cn": "哪里"
+          },
+          "pronounce": "どこ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "だ",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "だ",
+          "word_type": 2,
+          "base_form": "だ",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "きっと大人になったとか",
+      "translation": {
+        "zh_cn": "肯定是变成了大人之类的"
+      },
+      "words": [
+        {
+          "text": "きっと",
+          "translation": {
+            "zh_cn": "肯定"
+          },
+          "pronounce": "きっと",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "大人",
+          "translation": {
+            "zh_cn": "大人"
+          },
+          "pronounce": "おとな",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "になった",
+          "translation": {
+            "zh_cn": "变成了"
+          },
+          "pronounce": "になった",
+          "word_type": 2,
+          "base_form": "なる",
+          "loanword": ""
+        },
+        {
+          "text": "とか",
+          "translation": {
+            "zh_cn": "之类的"
+          },
+          "pronounce": "とか",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "そういうことじゃなくてさ",
+      "translation": {
+        "zh_cn": "不是那样的意思"
+      },
+      "words": [
+        {
+          "text": "そういう",
+          "translation": {
+            "zh_cn": "那样的"
+          },
+          "pronounce": "そういう",
+          "word_type": 11,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "こと",
+          "translation": {
+            "zh_cn": "意思"
+          },
+          "pronounce": "こと",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "じゃなくて",
+          "translation": {
+            "zh_cn": "不是"
+          },
+          "pronounce": "じゃなくて",
+          "word_type": 7,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "さ",
+          "translation": {
+            "zh_cn": "啊"
+          },
+          "pronounce": "さ",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "あと少しだけの勇気で",
+      "translation": {
+        "zh_cn": "只要再多一点点勇气"
+      },
+      "words": [
+        {
+          "text": "あと",
+          "translation": {
+            "zh_cn": "再多一点"
+          },
+          "pronounce": "あと",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "少しだけ",
+          "translation": {
+            "zh_cn": "只要一点点"
+          },
+          "pronounce": "すこしだけ",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "勇気",
+          "translation": {
+            "zh_cn": "勇气"
+          },
+          "pronounce": "ゆうき",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "で",
+          "translation": {
+            "zh_cn": "就能"
+          },
+          "pronounce": "で",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "変えられた明日はあった",
+      "translation": {
+        "zh_cn": "存在着能改变的明天"
+      },
+      "words": [
+        {
+          "text": "変えられた",
+          "translation": {
+            "zh_cn": "能改变"
+          },
+          "pronounce": "かえられた",
+          "word_type": 2,
+          "base_form": "変える",
+          "loanword": ""
+        },
+        {
+          "text": "明日",
+          "translation": {
+            "zh_cn": "明天"
+          },
+          "pronounce": "あした",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "あった",
+          "translation": {
+            "zh_cn": "存在着"
+          },
+          "pronounce": "あった",
+          "word_type": 2,
+          "base_form": "ある",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "それさえ気づけなかったんだ",
+      "translation": {
+        "zh_cn": "连那个都没有察觉到"
+      },
+      "words": [
+        {
+          "text": "それ",
+          "translation": {
+            "zh_cn": "那个"
+          },
+          "pronounce": "それ",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "さえ",
+          "translation": {
+            "zh_cn": "甚至"
+          },
+          "pronounce": "さえ",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "気づけなかった",
+          "translation": {
+            "zh_cn": "没有察觉到"
+          },
+          "pronounce": "きづけなかった",
+          "word_type": 2,
+          "base_form": "気づく",
+          "loanword": ""
+        },
+        {
+          "text": "んだ",
+          "translation": {
+            "zh_cn": "啊"
+          },
+          "pronounce": "んだ",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "そんな瞬間は何度あったんだろう",
+      "translation": {
+        "zh_cn": "那样的瞬间又发生了多少次呢"
+      },
+      "words": [
+        {
+          "text": "そんな",
+          "translation": {
+            "zh_cn": "那样的"
+          },
+          "pronounce": "そんな",
+          "word_type": 11,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "瞬間",
+          "translation": {
+            "zh_cn": "瞬间"
+          },
+          "pronounce": "しゅんかん",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "何度",
+          "translation": {
+            "zh_cn": "多少次"
+          },
+          "pronounce": "なんど",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "あったんだろう",
+          "translation": {
+            "zh_cn": "发生了多少次呢"
+          },
+          "pronounce": "あったんだろう",
+          "word_type": 2,
+          "base_form": "ある",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "結んだ糸は解いた",
+      "translation": {
+        "zh_cn": "解开了系着的线"
+      },
+      "words": [
+        {
+          "text": "結んだ",
+          "translation": {
+            "zh_cn": "系着"
+          },
+          "pronounce": "むすんだ",
+          "word_type": 2,
+          "base_form": "結ぶ",
+          "loanword": ""
+        },
+        {
+          "text": "糸",
+          "translation": {
+            "zh_cn": "线"
+          },
+          "pronounce": "いと",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "被"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "解いた",
+          "translation": {
+            "zh_cn": "解开了"
+          },
+          "pronounce": "といた",
+          "word_type": 2,
+          "base_form": "解く",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "世界はあの日のまま",
+      "translation": {
+        "zh_cn": "世界还停留在那一天"
+      },
+      "words": [
+        {
+          "text": "世界",
+          "translation": {
+            "zh_cn": "世界"
+          },
+          "pronounce": "せかい",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "あの日",
+          "translation": {
+            "zh_cn": "那一天"
+          },
+          "pronounce": "あのひ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "まま",
+          "translation": {
+            "zh_cn": "还停留"
+          },
+          "pronounce": "まま",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "僕はまた",
+      "translation": {
+        "zh_cn": "我又"
+      },
+      "words": [
+        {
+          "text": "僕",
+          "translation": {
+            "zh_cn": "我"
+          },
+          "pronounce": "ぼく",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "又"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "また",
+          "translation": {
+            "zh_cn": "再次"
+          },
+          "pronounce": "また",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "繰り返してばかり",
+      "translation": {
+        "zh_cn": "只是不停重复"
+      },
+      "words": [
+        {
+          "text": "繰り返して",
+          "translation": {
+            "zh_cn": "重复"
+          },
+          "pronounce": "くりかえして",
+          "word_type": 2,
+          "base_form": "繰り返す",
+          "loanword": ""
+        },
+        {
+          "text": "ばかり",
+          "translation": {
+            "zh_cn": "只是"
+          },
+          "pronounce": "ばかり",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "嫌になっちゃうな",
+      "translation": {
+        "zh_cn": "变得讨厌了呢"
+      },
+      "words": [
+        {
+          "text": "嫌",
+          "translation": {
+            "zh_cn": "讨厌"
+          },
+          "pronounce": "いや",
+          "word_type": 3,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "に",
+          "translation": {
+            "zh_cn": "地"
+          },
+          "pronounce": "に",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "なっちゃう",
+          "translation": {
+            "zh_cn": "变得"
+          },
+          "pronounce": "なっちゃう",
+          "word_type": 2,
+          "base_form": "なる",
+          "loanword": ""
+        },
+        {
+          "text": "な",
+          "translation": {
+            "zh_cn": "了呢"
+          },
+          "pronounce": "な",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "身勝手な夢を抱いて自ら砕いて",
+      "translation": {
+        "zh_cn": "怀着自私的梦想自己粉碎"
+      },
+      "words": [
+        {
+          "text": "身勝手",
+          "translation": {
+            "zh_cn": "自私"
+          },
+          "pronounce": "みがって",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "な",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "な",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "夢",
+          "translation": {
+            "zh_cn": "梦想"
+          },
+          "pronounce": "ゆめ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "を",
+          "translation": {
+            "zh_cn": "抱いて"
+          },
+          "pronounce": "を",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "自ら",
+          "translation": {
+            "zh_cn": "自己"
+          },
+          "pronounce": "みずから",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "砕いて",
+          "translation": {
+            "zh_cn": "粉碎"
+          },
+          "pronounce": "くだいて",
+          "word_type": 2,
+          "base_form": "砕く",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "何がしたいの",
+      "translation": {
+        "zh_cn": "想要做什么呢"
+      },
+      "words": [
+        {
+          "text": "何",
+          "translation": {
+            "zh_cn": "什么"
+          },
+          "pronounce": "なに",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "が",
+          "translation": {
+            "zh_cn": "呢"
+          },
+          "pronounce": "が",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "したい",
+          "translation": {
+            "zh_cn": "想要"
+          },
+          "pronounce": "したい",
+          "word_type": 2,
+          "base_form": "する",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "呢"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "いつかこの闇を切り裂いてくれないか",
+      "translation": {
+        "zh_cn": "总有一天能将这黑暗撕裂吗"
+      },
+      "words": [
+        {
+          "text": "いつか",
+          "translation": {
+            "zh_cn": "总有一天"
+          },
+          "pronounce": "いつか",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "この",
+          "translation": {
+            "zh_cn": "这个"
+          },
+          "pronounce": "この",
+          "word_type": 11,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "闇",
+          "translation": {
+            "zh_cn": "黑暗"
+          },
+          "pronounce": "やみ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "を",
+          "translation": {
+            "zh_cn": "将"
+          },
+          "pronounce": "を",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "切り裂いて",
+          "translation": {
+            "zh_cn": "撕裂"
+          },
+          "pronounce": "きりさいて",
+          "word_type": 2,
+          "base_form": "切り裂く",
+          "loanword": ""
+        },
+        {
+          "text": "くれないか",
+          "translation": {
+            "zh_cn": "能吗"
+          },
+          "pronounce": "くれないか",
+          "word_type": 2,
+          "base_form": "くれる",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "Oh my life",
+      "translation": {
+        "zh_cn": "哦，我的生活"
+      },
+      "words": [
+        {
+          "text": "Oh",
+          "translation": {
+            "zh_cn": "哦"
+          },
+          "pronounce": "オー",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "my",
+          "translation": {
+            "zh_cn": "我的"
+          },
+          "pronounce": "マイ",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "life",
+          "translation": {
+            "zh_cn": "生活"
+          },
+          "pronounce": "ライフ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "僕たちの正義はきっと",
+      "translation": {
+        "zh_cn": "我们的正义一定"
+      },
+      "words": [
+        {
+          "text": "僕たち",
+          "translation": {
+            "zh_cn": "我们"
+          },
+          "pronounce": "ぼくたち",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "正義",
+          "translation": {
+            "zh_cn": "正义"
+          },
+          "pronounce": "せいぎ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "きっと",
+          "translation": {
+            "zh_cn": "一定"
+          },
+          "pronounce": "きっと",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "誰かには邪魔なものさ",
+      "translation": {
+        "zh_cn": "对某些人来说是个干扰"
+      },
+      "words": [
+        {
+          "text": "誰か",
+          "translation": {
+            "zh_cn": "某些人"
+          },
+          "pronounce": "だれか",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "には",
+          "translation": {
+            "zh_cn": "对于"
+          },
+          "pronounce": "には",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "邪魔",
+          "translation": {
+            "zh_cn": "干扰"
+          },
+          "pronounce": "じゃま",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "な",
+          "translation": {
+            "zh_cn": "是个"
+          },
+          "pronounce": "な",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "もの",
+          "translation": {
+            "zh_cn": "东西"
+          },
+          "pronounce": "もの",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "さ",
+          "translation": {
+            "zh_cn": "啊"
+          },
+          "pronounce": "さ",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "きっと仕方なかったとか",
+      "translation": {
+        "zh_cn": "一定是没办法的"
+      },
+      "words": [
+        {
+          "text": "きっと",
+          "translation": {
+            "zh_cn": "一定"
+          },
+          "pronounce": "きっと",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "仕方",
+          "translation": {
+            "zh_cn": "办法"
+          },
+          "pronounce": "しかた",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "なかった",
+          "translation": {
+            "zh_cn": "没有"
+          },
+          "pronounce": "なかった",
+          "word_type": 2,
+          "base_form": "ない",
+          "loanword": ""
+        },
+        {
+          "text": "とか",
+          "translation": {
+            "zh_cn": "之类的"
+          },
+          "pronounce": "とか",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "そういうことじゃなくてさ",
+      "translation": {
+        "zh_cn": "不是那样的事情啦"
+      },
+      "words": [
+        {
+          "text": "そういう",
+          "translation": {
+            "zh_cn": "那样的"
+          },
+          "pronounce": "そういう",
+          "word_type": 11,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "こと",
+          "translation": {
+            "zh_cn": "事情"
+          },
+          "pronounce": "こと",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "じゃなくて",
+          "translation": {
+            "zh_cn": "不是"
+          },
+          "pronounce": "じゃなくて",
+          "word_type": 7,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "さ",
+          "translation": {
+            "zh_cn": "啦"
+          },
+          "pronounce": "さ",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "あと少し強くなれば",
+      "translation": {
+        "zh_cn": "再稍微变得强大一点"
+      },
+      "words": [
+        {
+          "text": "あと",
+          "translation": {
+            "zh_cn": "再稍微"
+          },
+          "pronounce": "あと",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "少し",
+          "translation": {
+            "zh_cn": "一点"
+          },
+          "pronounce": "すこし",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "強く",
+          "translation": {
+            "zh_cn": "强大"
+          },
+          "pronounce": "つよく",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "なれば",
+          "translation": {
+            "zh_cn": "变得"
+          },
+          "pronounce": "なれば",
+          "word_type": 2,
+          "base_form": "なる",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "守られる明日があって",
+      "translation": {
+        "zh_cn": "才会有被守护的明天"
+      },
+      "words": [
+        {
+          "text": "守られる",
+          "translation": {
+            "zh_cn": "被守护"
+          },
+          "pronounce": "まもられる",
+          "word_type": 2,
+          "base_form": "守る",
+          "loanword": ""
+        },
+        {
+          "text": "明日",
+          "translation": {
+            "zh_cn": "明天"
+          },
+          "pronounce": "あした",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "が",
+          "translation": {
+            "zh_cn": "有"
+          },
+          "pronounce": "が",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "あって",
+          "translation": {
+            "zh_cn": "才会有"
+          },
+          "pronounce": "あって",
+          "word_type": 2,
+          "base_form": "ある",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "全て変わった夜も",
+      "translation": {
+        "zh_cn": "即使是一切都变了的夜晚"
+      },
+      "words": [
+        {
+          "text": "全て",
+          "translation": {
+            "zh_cn": "一切"
+          },
+          "pronounce": "すべて",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "変わった",
+          "translation": {
+            "zh_cn": "变了"
+          },
+          "pronounce": "かわった",
+          "word_type": 2,
+          "base_form": "変わる",
+          "loanword": ""
+        },
+        {
+          "text": "夜",
+          "translation": {
+            "zh_cn": "夜晚"
+          },
+          "pronounce": "よる",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "も",
+          "translation": {
+            "zh_cn": "即使是"
+          },
+          "pronounce": "も",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "またここからと",
+      "translation": {
+        "zh_cn": "再从这里开始"
+      },
+      "words": [
+        {
+          "text": "また",
+          "translation": {
+            "zh_cn": "再"
+          },
+          "pronounce": "また",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "ここ",
+          "translation": {
+            "zh_cn": "这里"
+          },
+          "pronounce": "ここ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "から",
+          "translation": {
+            "zh_cn": "从"
+          },
+          "pronounce": "から",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "と",
+          "translation": {
+            "zh_cn": "开始"
+          },
+          "pronounce": "と",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "笑えたらな",
+      "translation": {
+        "zh_cn": "如果能笑出来就好了"
+      },
+      "words": [
+        {
+          "text": "笑えたら",
+          "translation": {
+            "zh_cn": "如果能笑出来"
+          },
+          "pronounce": "わらえたら",
+          "word_type": 2,
+          "base_form": "笑う",
+          "loanword": ""
+        },
+        {
+          "text": "な",
+          "translation": {
+            "zh_cn": "就好了"
+          },
+          "pronounce": "な",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "Ah 捻くれた感情",
+      "translation": {
+        "zh_cn": "啊 扭曲的情感"
+      },
+      "words": [
+        {
+          "text": "Ah",
+          "translation": {
+            "zh_cn": "啊"
+          },
+          "pronounce": "あー",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "捻くれた",
+          "translation": {
+            "zh_cn": "扭曲的"
+          },
+          "pronounce": "ねじくれた",
+          "word_type": 3,
+          "base_form": "捻くれる",
+          "loanword": ""
+        },
+        {
+          "text": "感情",
+          "translation": {
+            "zh_cn": "情感"
+          },
+          "pronounce": "かんじょう",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "出てこないでね",
+      "translation": {
+        "zh_cn": "请不要出现"
+      },
+      "words": [
+        {
+          "text": "出て",
+          "translation": {
+            "zh_cn": "出现"
+          },
+          "pronounce": "でて",
+          "word_type": 2,
+          "base_form": "出る",
+          "loanword": ""
+        },
+        {
+          "text": "こないで",
+          "translation": {
+            "zh_cn": "请不要"
+          },
+          "pronounce": "こないで",
+          "word_type": 2,
+          "base_form": "来る",
+          "loanword": ""
+        },
+        {
+          "text": "ね",
+          "translation": {
+            "zh_cn": "呢"
+          },
+          "pronounce": "ね",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "きっと変われたんだもう",
+      "translation": {
+        "zh_cn": "一定已经变了"
+      },
+      "words": [
+        {
+          "text": "きっと",
+          "translation": {
+            "zh_cn": "一定"
+          },
+          "pronounce": "きっと",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "変われた",
+          "translation": {
+            "zh_cn": "变了"
+          },
+          "pronounce": "かわれた",
+          "word_type": 2,
+          "base_form": "変わる",
+          "loanword": ""
+        },
+        {
+          "text": "んだ",
+          "translation": {
+            "zh_cn": "已经"
+          },
+          "pronounce": "んだ",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "もう",
+          "translation": {
+            "zh_cn": "已经"
+          },
+          "pronounce": "もう",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "君にサヨナラ",
+      "translation": {
+        "zh_cn": "向你道别"
+      },
+      "words": [
+        {
+          "text": "君",
+          "translation": {
+            "zh_cn": "你"
+          },
+          "pronounce": "きみ",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "に",
+          "translation": {
+            "zh_cn": "向"
+          },
+          "pronounce": "に",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "サヨナラ",
+          "translation": {
+            "zh_cn": "道别"
+          },
+          "pronounce": "さよなら",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "僕は君にとって",
+      "translation": {
+        "zh_cn": "对于你来说，我是"
+      },
+      "words": [
+        {
+          "text": "僕",
+          "translation": {
+            "zh_cn": "我"
+          },
+          "pronounce": "ぼく",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "君",
+          "translation": {
+            "zh_cn": "你"
+          },
+          "pronounce": "きみ",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "にとって",
+          "translation": {
+            "zh_cn": "对于"
+          },
+          "pronounce": "にとって",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "誰かにとって",
+      "translation": {
+        "zh_cn": "对于某人来说"
+      },
+      "words": [
+        {
+          "text": "誰か",
+          "translation": {
+            "zh_cn": "某人"
+          },
+          "pronounce": "だれか",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "にとって",
+          "translation": {
+            "zh_cn": "来说"
+          },
+          "pronounce": "にとって",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "明けない夜の",
+      "translation": {
+        "zh_cn": "永远不会破晓的夜晚"
+      },
+      "words": [
+        {
+          "text": "明けない",
+          "translation": {
+            "zh_cn": "永远不会破晓"
+          },
+          "pronounce": "あけない",
+          "word_type": 2,
+          "base_form": "明ける",
+          "loanword": ""
+        },
+        {
+          "text": "夜",
+          "translation": {
+            "zh_cn": "夜晚"
+          },
+          "pronounce": "よる",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "消えない星に",
+      "translation": {
+        "zh_cn": "永不消失的星星"
+      },
+      "words": [
+        {
+          "text": "消えない",
+          "translation": {
+            "zh_cn": "永不消失"
+          },
+          "pronounce": "きえない",
+          "word_type": 2,
+          "base_form": "消える",
+          "loanword": ""
+        },
+        {
+          "text": "星",
+          "translation": {
+            "zh_cn": "星星"
+          },
+          "pronounce": "ほし",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "に",
+          "translation": {
+            "zh_cn": "成为"
+          },
+          "pronounce": "に",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "なりたかった",
+      "translation": {
+        "zh_cn": "想要成为"
+      },
+      "words": [
+        {
+          "text": "なりたかった",
+          "translation": {
+            "zh_cn": "想要成为"
+          },
+          "pronounce": "なりたかった",
+          "word_type": 2,
+          "base_form": "なる",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "なれなかった",
+      "translation": {
+        "zh_cn": "却没有成为"
+      },
+      "words": [
+        {
+          "text": "なれなかった",
+          "translation": {
+            "zh_cn": "却没有成为"
+          },
+          "pronounce": "なれなかった",
+          "word_type": 2,
+          "base_form": "なれる",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "僕らはこのまま",
+      "translation": {
+        "zh_cn": "我们就这样"
+      },
+      "words": [
+        {
+          "text": "僕ら",
+          "translation": {
+            "zh_cn": "我们"
+          },
+          "pronounce": "ぼくら",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "就"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "このまま",
+          "translation": {
+            "zh_cn": "这样"
+          },
+          "pronounce": "このまま",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "あと少しだけの勇気で",
+      "translation": {
+        "zh_cn": "只需要一点点勇气"
+      },
+      "words": [
+        {
+          "text": "あと",
+          "translation": {
+            "zh_cn": "只需要"
+          },
+          "pronounce": "あと",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "少しだけ",
+          "translation": {
+            "zh_cn": "一点点"
+          },
+          "pronounce": "すこしだけ",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "の",
+          "translation": {
+            "zh_cn": "的"
+          },
+          "pronounce": "の",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "勇気",
+          "translation": {
+            "zh_cn": "勇气"
+          },
+          "pronounce": "ゆうき",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "で",
+          "translation": {
+            "zh_cn": "通过"
+          },
+          "pronounce": "で",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "変えられた明日はあった",
+      "translation": {
+        "zh_cn": "有能改变的明天"
+      },
+      "words": [
+        {
+          "text": "変えられた",
+          "translation": {
+            "zh_cn": "能改变的"
+          },
+          "pronounce": "かえられた",
+          "word_type": 2,
+          "base_form": "変える",
+          "loanword": ""
+        },
+        {
+          "text": "明日",
+          "translation": {
+            "zh_cn": "明天"
+          },
+          "pronounce": "あす",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "是"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "あった",
+          "translation": {
+            "zh_cn": "存在"
+          },
+          "pronounce": "あった",
+          "word_type": 2,
+          "base_form": "ある",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "それさえ気づけなかったんだ",
+      "translation": {
+        "zh_cn": "甚至没有意识到那一点"
+      },
+      "words": [
+        {
+          "text": "それ",
+          "translation": {
+            "zh_cn": "那一点"
+          },
+          "pronounce": "それ",
+          "word_type": 5,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "さえ",
+          "translation": {
+            "zh_cn": "甚至"
+          },
+          "pronounce": "さえ",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "気づけなかった",
+          "translation": {
+            "zh_cn": "没有意识到"
+          },
+          "pronounce": "きづけなかった",
+          "word_type": 2,
+          "base_form": "気づく",
+          "loanword": ""
+        },
+        {
+          "text": "んだ",
+          "translation": {
+            "zh_cn": "啊"
+          },
+          "pronounce": "んだ",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "そんな日はもうたくさんだ",
+      "translation": {
+        "zh_cn": "那样的日子已经够多了"
+      },
+      "words": [
+        {
+          "text": "そんな",
+          "translation": {
+            "zh_cn": "那样的"
+          },
+          "pronounce": "そんな",
+          "word_type": 3,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "日",
+          "translation": {
+            "zh_cn": "日子"
+          },
+          "pronounce": "ひ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "は",
+          "translation": {
+            "zh_cn": "已经"
+          },
+          "pronounce": "は",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "もう",
+          "translation": {
+            "zh_cn": "够"
+          },
+          "pronounce": "もう",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "たくさん",
+          "translation": {
+            "zh_cn": "多了"
+          },
+          "pronounce": "たくさん",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "だ",
+          "translation": {
+            "zh_cn": "了"
+          },
+          "pronounce": "だ",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "いつまでもなんてないんだ",
+      "translation": {
+        "zh_cn": "没有永远"
+      },
+      "words": [
+        {
+          "text": "いつまでも",
+          "translation": {
+            "zh_cn": "永远"
+          },
+          "pronounce": "いつまでも",
+          "word_type": 4,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "なんて",
+          "translation": {
+            "zh_cn": "什么"
+          },
+          "pronounce": "なんて",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "ない",
+          "translation": {
+            "zh_cn": "没有"
+          },
+          "pronounce": "ない",
+          "word_type": 3,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "んだ",
+          "translation": {
+            "zh_cn": "啊"
+          },
+          "pronounce": "んだ",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "終わりゆくその前に",
+      "translation": {
+        "zh_cn": "在即将结束之前"
+      },
+      "words": [
+        {
+          "text": "終わりゆく",
+          "translation": {
+            "zh_cn": "即将结束"
+          },
+          "pronounce": "おわりゆく",
+          "word_type": 2,
+          "base_form": "終わる",
+          "loanword": ""
+        },
+        {
+          "text": "その",
+          "translation": {
+            "zh_cn": "那个"
+          },
+          "pronounce": "その",
+          "word_type": 3,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "前に",
+          "translation": {
+            "zh_cn": "之前"
+          },
+          "pronounce": "まえに",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "一歩踏み出してみた",
+      "translation": {
+        "zh_cn": "迈出了一步"
+      },
+      "words": [
+        {
+          "text": "一歩",
+          "translation": {
+            "zh_cn": "一步"
+          },
+          "pronounce": "いっぽ",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "踏み出して",
+          "translation": {
+            "zh_cn": "迈出"
+          },
+          "pronounce": "ふみだして",
+          "word_type": 2,
+          "base_form": "踏み出す",
+          "loanword": ""
+        },
+        {
+          "text": "みた",
+          "translation": {
+            "zh_cn": "尝试了"
+          },
+          "pronounce": "みた",
+          "word_type": 2,
+          "base_form": "見る",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "受け入れながら",
+      "translation": {
+        "zh_cn": "接受的同时"
+      },
+      "words": [
+        {
+          "text": "受け入れ",
+          "translation": {
+            "zh_cn": "接受"
+          },
+          "pronounce": "うけいれ",
+          "word_type": 2,
+          "base_form": "受け入れる",
+          "loanword": ""
+        },
+        {
+          "text": "ながら",
+          "translation": {
+            "zh_cn": "的同时"
+          },
+          "pronounce": "ながら",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "祈りながら",
+      "translation": {
+        "zh_cn": "同时祈祷"
+      },
+      "words": [
+        {
+          "text": "祈り",
+          "translation": {
+            "zh_cn": "祈祷"
+          },
+          "pronounce": "いのり",
+          "word_type": 1,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "ながら",
+          "translation": {
+            "zh_cn": "的同时"
+          },
+          "pronounce": "ながら",
+          "word_type": 12,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    },
+    {
+      "text": "Oh, oh",
+      "translation": {
+        "zh_cn": "哦，哦"
+      },
+      "words": [
+        {
+          "text": "Oh",
+          "translation": {
+            "zh_cn": "哦"
+          },
+          "pronounce": "Oh",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        },
+        {
+          "text": "oh",
+          "translation": {
+            "zh_cn": "哦"
+          },
+          "pronounce": "oh",
+          "word_type": 10,
+          "base_form": "",
+          "loanword": ""
+        }
+      ]
+    }
+  ]
+}

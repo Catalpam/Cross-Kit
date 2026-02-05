@@ -1,0 +1,22 @@
+{
+  "lyrics": [
+    {
+      "text": string, // 歌词文本
+      "translation": {
+        "zh_cn": string // 歌词翻译成中文
+      },
+      "words": [
+        {
+          "text": string, // 单词原文
+          "translation": {
+            "zh_cn": string // 单词中文翻译
+          },
+          "pronounce": string,  // 单词发音，使用平假名标注
+          "word_type": "Noun|Verb|Adjective|Adverb|Pronoun|Preposition|Conjunction|Article|Numeral|Interjection|AdnominalAdjective|Particle|MeasureWord", // 单词类型, 枚举值为这几个选项中的一个
+          "base_form": string, // 如果存在单词原型需要指出，否则直接传空
+          "loanword": string // 单词对应的外来语，不是外来语时直接传空
+        }
+      ]
+    }
+  ]
+}

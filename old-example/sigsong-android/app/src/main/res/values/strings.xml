@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">SigSong</string>
+    <string name="login">登录</string>
+    <string name="username">账号</string>
+    <string name="password">密码</string>
+    <string name="search_placeholder">搜索歌曲</string>
+    <string name="recommendations_title">推荐歌曲</string>
+    <string name="retry">重试</string>
+</resources>
