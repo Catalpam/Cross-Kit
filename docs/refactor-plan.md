@@ -503,6 +503,7 @@ cargo fmt --all
 cargo test --workspace
 cargo llvm-cov --workspace --summary-only
 cargo test --manifest-path example/shared/Cargo.toml
+cargo test --manifest-path tools/ck-swift-packager/Cargo.toml
 xcodebuild -project example/ios/crosskit-example-ios.xcodeproj \
   -scheme crosskit-example-ios \
   -configuration Debug \
@@ -513,6 +514,7 @@ xcodebuild -project example/ios/crosskit-example-ios.xcodeproj \
 
 - 全 workspace Rust 测试通过。
 - 核心 Rust 行覆盖率超过 97%，或明确说明该阶段覆盖率统计边界。
+- `tools/ck-swift-packager` 在迁入 workspace 之前必须通过单独测试命令。
 - example/shared 不再直接引用 `ck-vm-macros`。
 - iOS example 仍能构建。
 - 未引入 Android 新要求。

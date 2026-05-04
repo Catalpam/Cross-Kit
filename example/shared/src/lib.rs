@@ -2,13 +2,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{Datelike, TimeZone, Utc};
-use ck_vm_macros::ck_vm_bridge;
+pub use cross_kit::CkVmMetadata;
+use cross_kit::vm_bridge;
 
 uniffi::setup_scaffolding!();
-
-pub trait CkVmMetadata {
-    fn ck_vm_metadata() -> &'static str;
-}
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct CounterState {
@@ -523,7 +520,7 @@ pub struct AppViewModel {
     store: Store,
 }
 
-#[ck_vm_bridge(
+#[vm_bridge(
     swift_bridge = "AppViewModelBridge",
     mode = "state",
     observer = "AppObserver",
@@ -582,7 +579,7 @@ pub struct CounterViewModel {
     store: Store,
 }
 
-#[ck_vm_bridge(
+#[vm_bridge(
     swift_bridge = "CounterViewModelBridge",
     mode = "state",
     observer = "CounterObserver",
@@ -617,7 +614,7 @@ pub struct ListViewModel {
     store: Store,
 }
 
-#[ck_vm_bridge(
+#[vm_bridge(
     swift_bridge = "ListViewModelBridge",
     mode = "diff_list",
     observer = "ListObserver",

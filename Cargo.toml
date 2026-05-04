@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cross-kit",
+    "crates/cross-kit-core",
+    "crates/cross-kit-macros",
+    "example/shared",
+]
+exclude = ["tools/ck-swift-packager"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"

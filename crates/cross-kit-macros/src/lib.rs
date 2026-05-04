@@ -31,10 +31,18 @@ pub fn ck_vm_bridge(args: TokenStream, input: TokenStream) -> TokenStream {
     let swift_bridge = args.values.get("swift_bridge").cloned().unwrap_or_default();
     let mode = args.values.get("mode").cloned().unwrap_or_default();
     let observer = args.values.get("observer").cloned().unwrap_or_default();
-    let observer_method = args.values.get("observer_method").cloned().unwrap_or_default();
+    let observer_method = args
+        .values
+        .get("observer_method")
+        .cloned()
+        .unwrap_or_default();
     let state_type = args.values.get("state_type").cloned().unwrap_or_default();
     let diff_type = args.values.get("diff_type").cloned().unwrap_or_default();
-    let list_item_type = args.values.get("list_item_type").cloned().unwrap_or_default();
+    let list_item_type = args
+        .values
+        .get("list_item_type")
+        .cloned()
+        .unwrap_or_default();
     let factory_type = args.values.get("factory_type").cloned().unwrap_or_default();
     let factory_method = args
         .values
@@ -133,7 +141,7 @@ pub fn ck_vm_bridge(args: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #input
 
-        impl CkVmMetadata for #self_ty {
+        impl cross_kit::CkVmMetadata for #self_ty {
             fn ck_vm_metadata() -> &'static str {
                 #meta_literal
             }
@@ -278,7 +286,8 @@ public final class {bridge}: ObservableObject, {observer} {{
         observer_proxy = observer_proxy.trim_end(),
         observer_id_decl = indent_optional(&observer_id_decl, 4),
         observer_id_assign = observer_id_assign,
-        observer_id_unsubscribe = indent_optional(&observer_id_unsubscribe.trim_end().to_string(), 4),
+        observer_id_unsubscribe =
+            indent_optional(&observer_id_unsubscribe.trim_end().to_string(), 4),
     )
 }
 
@@ -406,7 +415,8 @@ public final class {bridge}: ObservableObject, {observer} {{
         observer_proxy = observer_proxy.trim_end(),
         observer_id_decl = indent_optional(&observer_id_decl, 4),
         observer_id_assign = observer_id_assign,
-        observer_id_unsubscribe = indent_optional(&observer_id_unsubscribe.trim_end().to_string(), 4),
+        observer_id_unsubscribe =
+            indent_optional(&observer_id_unsubscribe.trim_end().to_string(), 4),
     )
 }
 
@@ -485,7 +495,13 @@ fn format_swift_ctor_call(method: &MethodInfo, vm_type: &str) -> String {
     let args = method
         .args
         .iter()
-        .map(|arg| format!("{}: {}", to_swift_method_name(&arg.name), to_swift_method_name(&arg.name)))
+        .map(|arg| {
+            format!(
+                "{}: {}",
+                to_swift_method_name(&arg.name),
+                to_swift_method_name(&arg.name)
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ");
     format!("{}({})", vm_type, args)
@@ -599,5 +615,170 @@ fn indent_optional(input: &str, spaces: usize) -> String {
         String::new()
     } else {
         indent(input, spaces)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state_meta() -> VmMetaLocal {
+        VmMetaLocal {
+            swift_bridge: "CounterViewModelBridge".to_string(),
+            mode: "state".to_string(),
+            vm_type: "CounterViewModel".to_string(),
+            observer: "CounterObserver".to_string(),
+            observer_method: "on_state".to_string(),
+            state_type: "CounterState".to_string(),
+            diff_type: String::new(),
+            list_item_type: String::new(),
+            factory_type: "AppViewModel".to_string(),
+            factory_method: "make_counter_vm".to_string(),
+            factory_bridge: "AppViewModelBridge".to_string(),
+            methods: vec![
+                MethodInfo {
+                    name: "subscribe".to_string(),
+                    args: vec![ArgInfo {
+                        name: "observer".to_string(),
+                        ty: "Arc<dynCounterObserver>".to_string(),
+                    }],
+                    ret: "i64".to_string(),
+                },
+                MethodInfo {
+                    name: "unsubscribe".to_string(),
+                    args: vec![ArgInfo {
+                        name: "id".to_string(),
+                        ty: "i64".to_string(),
+                    }],
+                    ret: "unit".to_string(),
+                },
+                MethodInfo {
+                    name: "get_state".to_string(),
+                    args: Vec::new(),
+                    ret: "CounterState".to_string(),
+                },
+                MethodInfo {
+                    name: "increment_by".to_string(),
+                    args: vec![ArgInfo {
+                        name: "delta_value".to_string(),
+                        ty: "i32".to_string(),
+                    }],
+                    ret: "CounterState".to_string(),
+                },
+            ],
+        }
+    }
+
+    fn list_meta() -> VmMetaLocal {
+        VmMetaLocal {
+            swift_bridge: "ListViewModelBridge".to_string(),
+            mode: "diff_list".to_string(),
+            vm_type: "ListViewModel".to_string(),
+            observer: "ListObserver".to_string(),
+            observer_method: "on_diffs".to_string(),
+            state_type: String::new(),
+            diff_type: "ListDiff".to_string(),
+            list_item_type: "ListItem".to_string(),
+            factory_type: String::new(),
+            factory_method: String::new(),
+            factory_bridge: String::new(),
+            methods: vec![
+                MethodInfo {
+                    name: "subscribe".to_string(),
+                    args: Vec::new(),
+                    ret: "unit".to_string(),
+                },
+                MethodInfo {
+                    name: "append_now".to_string(),
+                    args: Vec::new(),
+                    ret: "ListItem".to_string(),
+                },
+                MethodInfo {
+                    name: "apply_diffs".to_string(),
+                    args: vec![ArgInfo {
+                        name: "diffs".to_string(),
+                        ty: "Vec<ListDiff>".to_string(),
+                    }],
+                    ret: "bool".to_string(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn maps_rust_types_to_swift_types() {
+        assert_eq!(map_type_to_swift("unit"), "Void");
+        assert_eq!(map_type_to_swift("i64"), "Int64");
+        assert_eq!(map_type_to_swift("i32"), "Int32");
+        assert_eq!(map_type_to_swift("u64"), "UInt64");
+        assert_eq!(map_type_to_swift("u32"), "UInt32");
+        assert_eq!(map_type_to_swift("bool"), "Bool");
+        assert_eq!(map_type_to_swift("String"), "String");
+        assert_eq!(map_type_to_swift("Option<Vec<i64>>"), "[Int64]?");
+        assert_eq!(
+            map_type_to_swift("Arc<CounterViewModel>"),
+            "CounterViewModelProtocol"
+        );
+        assert_eq!(
+            map_type_to_swift("std::sync::Arc<ListViewModel>"),
+            "ListViewModelProtocol"
+        );
+        assert_eq!(map_type_to_swift("CustomRecord"), "CustomRecord");
+    }
+
+    #[test]
+    fn converts_snake_case_to_swift_method_names() {
+        assert_eq!(to_swift_method_name("get_state"), "getState");
+        assert_eq!(to_swift_method_name("append_now"), "appendNow");
+        assert_eq!(to_swift_method_name("already"), "already");
+        assert_eq!(to_swift_method_name(""), "");
+    }
+
+    #[test]
+    fn generates_state_bridge_with_factory_and_unsubscribe() {
+        let code = generate_swift_bridge(&state_meta());
+
+        assert!(code.contains("public final class CounterViewModelBridge"));
+        assert!(code.contains("public init(app: AppViewModelBridge)"));
+        assert!(code.contains("let vm = app.makeCounterVm()"));
+        assert!(code.contains("private var observerId: Int64?"));
+        assert!(code.contains("vm.unsubscribe(id: id)"));
+        assert!(code.contains("public func incrementBy(deltaValue: Int32) -> CounterState"));
+        assert!(!code.contains("public func subscribe"));
+    }
+
+    #[test]
+    fn generates_diff_list_bridge_with_diff_application() {
+        let code = generate_swift_bridge(&list_meta());
+
+        assert!(code.contains("@Published public private(set) var items: [ListItem] = []"));
+        assert!(code.contains("public func appendNow() -> ListItem"));
+        assert!(code.contains("public func applyDiffs(diffs: [ListDiff]) -> Bool"));
+        assert!(code.contains("case let .move(from, to):"));
+        assert!(code.contains("private func clampIndex"));
+        assert!(code.contains("vm.subscribe(observer: observer)"));
+    }
+
+    #[test]
+    fn unknown_bridge_mode_generates_empty_code() {
+        let mut meta = state_meta();
+        meta.mode = "unknown".to_string();
+        assert!(generate_swift_bridge(&meta).is_empty());
+    }
+
+    #[test]
+    fn formats_method_signatures_and_indentation() {
+        let method = MethodInfo {
+            name: "clear_route".to_string(),
+            args: Vec::new(),
+            ret: "unit".to_string(),
+        };
+        assert_eq!(
+            format_swift_method(&method),
+            "public func clearRoute() {\n        vm.clearRoute()\n    }\n\n"
+        );
+        assert_eq!(indent("a\n\nb", 2), "  a\n\n  b");
+        assert_eq!(indent_optional("  ", 4), "");
+        assert_eq!(indent_optional("x", 4), "    x");
     }
 }

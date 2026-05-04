@@ -1,5 +1,5 @@
 [package]
-name = "ck-vm-macros"
+name = "cross-kit-macros"
 version = "0.1.0"
 edition = "2021"
 
