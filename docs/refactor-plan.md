@@ -820,10 +820,10 @@ Review 重点：
 ```bash
 cargo fmt --all
 cargo test --workspace
-cargo llvm-cov --workspace --summary-only
-cargo run -p cross-kit-cli -- android package --config examples/counter-list/cross-kit.toml
+cargo llvm-cov --workspace --exclude cross-kit-packager-ios --summary-only
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 cargo run -p cross-kit-cli -- android package --config examples/counter-list/cross-kit.toml
 cd examples/counter-list/android
-./gradlew clean assembleDebug
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew clean assembleDebug
 ```
 
 验收标准：

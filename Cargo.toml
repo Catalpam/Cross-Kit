@@ -5,6 +5,7 @@ members = [
     "crates/cross-kit-codegen",
     "crates/cross-kit-core",
     "crates/cross-kit-macros",
+    "crates/cross-kit-packager-android",
     "crates/cross-kit-packager-ios",
     "crates/cross-kit-cli",
     "examples/counter-list/shared",

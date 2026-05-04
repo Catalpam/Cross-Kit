@@ -28,11 +28,10 @@ xcodebuild -project examples/counter-list/ios/crosskit-example-ios.xcodeproj \
 Generated `dist/` directories are ignored by git and should be recreated from
 source.
 
-The Android example currently uses the Step 6 generated-source flow:
+The Android example consumes the generated local Maven artifact:
 
 ```bash
-cargo run -p cross-kit-cli -- gen bridges --platform android --config examples/counter-list/cross-kit.toml
-cargo run -p cross-kit-cli -- android build-native --config examples/counter-list/cross-kit.toml
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 cargo run -p cross-kit-cli -- android package --config examples/counter-list/cross-kit.toml
 cd examples/counter-list/android
-JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew assembleDebug
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew clean assembleDebug
 ```

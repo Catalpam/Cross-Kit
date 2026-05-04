@@ -59,6 +59,16 @@ pub struct AndroidConfig {
     pub output: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jni_libs_output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradle_project_output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gradle_executable: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub java_home: Option<String>,
     #[serde(default = "default_android_targets")]
     pub targets: Vec<String>,
     #[serde(default = "default_release")]
@@ -380,6 +390,11 @@ mod tests {
             package_name = "com.crosskit.shared"
             output = "android/app/build/generated/cross-kit"
             jni_libs_output = "android/app/src/main/jniLibs"
+            package_output = "dist/android"
+            gradle_project_output = "dist/android/gradle-project"
+            module_name = "crosskitshared"
+            gradle_executable = "android/gradlew"
+            java_home = "/opt/homebrew/opt/openjdk@21"
             targets = ["arm64-v8a"]
             build_mode = "debug"
             "#,
@@ -395,6 +410,20 @@ mod tests {
         assert_eq!(
             android.jni_libs_output.as_deref(),
             Some("android/app/src/main/jniLibs")
+        );
+        assert_eq!(android.package_output.as_deref(), Some("dist/android"));
+        assert_eq!(
+            android.gradle_project_output.as_deref(),
+            Some("dist/android/gradle-project")
+        );
+        assert_eq!(android.module_name.as_deref(), Some("crosskitshared"));
+        assert_eq!(
+            android.gradle_executable.as_deref(),
+            Some("android/gradlew")
+        );
+        assert_eq!(
+            android.java_home.as_deref(),
+            Some("/opt/homebrew/opt/openjdk@21")
         );
         assert_eq!(android.targets, ["arm64-v8a"].map(str::to_string));
         assert_eq!(android.build_mode, "debug");
@@ -413,6 +442,11 @@ mod tests {
         .unwrap();
 
         let android = config.android.unwrap();
+        assert_eq!(android.package_output, None);
+        assert_eq!(android.gradle_project_output, None);
+        assert_eq!(android.module_name, None);
+        assert_eq!(android.gradle_executable, None);
+        assert_eq!(android.java_home, None);
         assert_eq!(android.targets, ["arm64-v8a", "x86_64"].map(str::to_string));
         assert_eq!(android.build_mode, "release");
     }

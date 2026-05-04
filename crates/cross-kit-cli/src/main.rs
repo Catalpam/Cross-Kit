@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 use cross_kit_core::{CONFIG_FILE_NAME, CrossKitConfig, VmMetadata};
+use cross_kit_packager_android::AndroidPackageOptions;
 use cross_kit_packager_ios::{BuildMode, IosPackageOptions, LibType, PackageFormat};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -65,6 +66,12 @@ enum AndroidCommand {
         #[arg(long, default_value = CONFIG_FILE_NAME)]
         config: PathBuf,
     },
+    /// Generate and build an Android AAR.
+    Package {
+        /// Path to cross-kit.toml.
+        #[arg(long, default_value = CONFIG_FILE_NAME)]
+        config: PathBuf,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -107,6 +114,17 @@ fn run(cli: Cli) -> Result<()> {
                 "Android native libraries written to {}; Kotlin bindings written to {}",
                 report.jni_libs_output.display(),
                 report.binding_output.display()
+            );
+        }
+        Command::Android {
+            command: AndroidCommand::Package { config },
+        } => {
+            let options = load_android_package_options(&config)?;
+            let report = cross_kit_packager_android::package_android(&options)?;
+            println!(
+                "Android AAR written to {}; local Maven repo written to {}",
+                report.aar.display(),
+                report.maven_repo.display()
             );
         }
     }
@@ -244,6 +262,83 @@ fn android_paths_from_config(config_path: &Path, config: &CrossKitConfig) -> Res
             .lib_name
             .clone()
             .unwrap_or_else(|| "cross_kit_shared".to_string()),
+        metadata_bin: config.shared.metadata_bin.clone(),
+    })
+}
+
+fn load_android_package_options(config_path: &Path) -> Result<AndroidPackageOptions> {
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("failed to read config {}", config_path.display()))?;
+    let config = CrossKitConfig::from_toml_str(&content)
+        .with_context(|| format!("failed to parse {}", config_path.display()))?;
+    android_package_options_from_config(config_path, &config)
+}
+
+fn android_package_options_from_config(
+    config_path: &Path,
+    config: &CrossKitConfig,
+) -> Result<AndroidPackageOptions> {
+    let android = config
+        .android
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("missing [android] section in {}", config_path.display()))?;
+    if config.shared.crate_path.trim().is_empty() {
+        bail!("[shared].crate_path must not be empty");
+    }
+    if android.build_mode != "debug" && android.build_mode != "release" {
+        bail!(
+            "unsupported Android build mode '{}'; expected 'debug' or 'release'",
+            android.build_mode
+        );
+    }
+    if android.targets.is_empty()
+        || android
+            .targets
+            .iter()
+            .any(|target| target.trim().is_empty())
+    {
+        bail!("[android].targets must contain at least one non-empty target");
+    }
+
+    let config_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
+    let output = android
+        .package_output
+        .as_ref()
+        .map(|output| resolve_relative(config_dir, output))
+        .unwrap_or_else(|| resolve_relative(config_dir, "dist/android"));
+    let gradle_project = android
+        .gradle_project_output
+        .as_ref()
+        .map(|output| resolve_relative(config_dir, output))
+        .unwrap_or_else(|| output.join("gradle-project"));
+    Ok(AndroidPackageOptions {
+        crate_path: resolve_relative(config_dir, &config.shared.crate_path),
+        package_name: android
+            .package_name
+            .clone()
+            .unwrap_or_else(|| "com.crosskit.shared".to_string()),
+        lib_name: config
+            .shared
+            .lib_name
+            .clone()
+            .unwrap_or_else(|| "cross_kit_shared".to_string()),
+        output,
+        gradle_project,
+        module_name: android
+            .module_name
+            .clone()
+            .unwrap_or_else(|| "crosskitshared".to_string()),
+        gradle_executable: android
+            .gradle_executable
+            .as_ref()
+            .map(|path| resolve_relative(config_dir, path))
+            .unwrap_or_else(|| resolve_relative(config_dir, "android/gradlew")),
+        java_home: android
+            .java_home
+            .as_ref()
+            .map(|path| resolve_relative(config_dir, path)),
+        targets: android.targets.clone(),
+        build_mode: android.build_mode.clone(),
         metadata_bin: config.shared.metadata_bin.clone(),
     })
 }
@@ -466,6 +561,7 @@ mod tests {
         let content = fs::read_to_string(&config_path).unwrap();
         let config = CrossKitConfig::from_toml_str(&content).unwrap();
         let android = android_paths_from_config(&config_path, &config).unwrap();
+        let android_package = android_package_options_from_config(&config_path, &config).unwrap();
 
         assert_eq!(
             options.crate_path,
@@ -496,6 +592,20 @@ mod tests {
             android.jni_libs_output,
             repo_root.join("examples/counter-list/android/app/src/main/jniLibs")
         );
+        assert_eq!(
+            android_package.output,
+            repo_root.join("examples/counter-list/dist/android")
+        );
+        assert_eq!(
+            android_package.gradle_project,
+            repo_root.join("examples/counter-list/dist/android/gradle-project")
+        );
+        assert_eq!(android_package.module_name, "crosskitshared");
+        assert_eq!(
+            android_package.gradle_executable,
+            repo_root.join("examples/counter-list/android/gradlew")
+        );
+        assert_eq!(android_package.java_home, None);
     }
 
     #[test]
@@ -511,6 +621,11 @@ mod tests {
             package_name = "com.example.shared"
             output = "android/app/build/generated/cross-kit"
             jni_libs_output = "android/app/src/main/jniLibs"
+            package_output = "dist/android"
+            gradle_project_output = "dist/android/gradle-project"
+            module_name = "crosskitshared"
+            gradle_executable = "android/gradlew"
+            java_home = "/opt/homebrew/opt/openjdk@21"
             targets = ["arm64-v8a"]
             build_mode = "debug"
             "#,
@@ -538,6 +653,24 @@ mod tests {
         assert_eq!(paths.build_mode, "debug");
         assert_eq!(paths.lib_name, "cross_kit_shared");
         assert_eq!(paths.metadata_bin, "metadata");
+
+        let package =
+            android_package_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+                .unwrap();
+        assert_eq!(package.output, PathBuf::from("/tmp/project/dist/android"));
+        assert_eq!(
+            package.gradle_project,
+            PathBuf::from("/tmp/project/dist/android/gradle-project")
+        );
+        assert_eq!(package.module_name, "crosskitshared");
+        assert_eq!(
+            package.gradle_executable,
+            PathBuf::from("/tmp/project/android/gradlew")
+        );
+        assert_eq!(
+            package.java_home,
+            Some(PathBuf::from("/opt/homebrew/opt/openjdk@21"))
+        );
     }
 
     #[test]
@@ -759,6 +892,117 @@ mod tests {
                 .to_string()
                 .contains("false failed")
         );
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn run_dispatches_command_config_errors_before_external_tools() {
+        let temp = temp_path("run-dispatch");
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&temp).unwrap();
+        let config_path = temp.join("cross-kit.toml");
+        fs::write(
+            &config_path,
+            r#"
+            [shared]
+            crate_path = "shared"
+            "#,
+        )
+        .unwrap();
+
+        let ios = Cli {
+            command: Command::Ios {
+                command: IosCommand::Package {
+                    config: config_path.clone(),
+                },
+            },
+        };
+        assert!(
+            run(ios)
+                .unwrap_err()
+                .to_string()
+                .contains("missing [ios] section")
+        );
+
+        let generated = Cli {
+            command: Command::Gen {
+                command: GenCommand::Bridges {
+                    platform: Platform::Android,
+                    config: config_path.clone(),
+                },
+            },
+        };
+        assert!(
+            run(generated)
+                .unwrap_err()
+                .to_string()
+                .contains("missing [android] section")
+        );
+
+        let native = Cli {
+            command: Command::Android {
+                command: AndroidCommand::BuildNative {
+                    config: config_path.clone(),
+                },
+            },
+        };
+        assert!(
+            run(native)
+                .unwrap_err()
+                .to_string()
+                .contains("missing [android] section")
+        );
+
+        let package = Cli {
+            command: Command::Android {
+                command: AndroidCommand::Package {
+                    config: config_path.clone(),
+                },
+            },
+        };
+        assert!(
+            run(package)
+                .unwrap_err()
+                .to_string()
+                .contains("missing [android] section")
+        );
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn load_android_package_options_reads_config_file() {
+        let temp = temp_path("android-package-config");
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&temp).unwrap();
+        let config_path = temp.join("cross-kit.toml");
+        fs::write(
+            &config_path,
+            r#"
+            [shared]
+            crate_path = "shared"
+            lib_name = "cross_kit_shared"
+            metadata_bin = "metadata"
+
+            [android]
+            package_name = "com.example.shared"
+            package_output = "dist/android"
+            module_name = "examplekit"
+            targets = ["arm64-v8a"]
+            "#,
+        )
+        .unwrap();
+
+        let options = load_android_package_options(&config_path).unwrap();
+
+        assert_eq!(options.crate_path, temp.join("shared"));
+        assert_eq!(options.package_name, "com.example.shared");
+        assert_eq!(options.output, temp.join("dist/android"));
+        assert_eq!(
+            options.gradle_project,
+            temp.join("dist/android/gradle-project")
+        );
+        assert_eq!(options.module_name, "examplekit");
+        assert_eq!(options.targets, vec!["arm64-v8a"]);
         let _ = fs::remove_dir_all(&temp);
     }
 

@@ -14,6 +14,9 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        maven {
+            url = uri("../dist/android/maven")
+        }
         google()
         mavenCentral()
     }
@@ -21,4 +24,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "crosskit-example-android"
 include(":app")
- 
