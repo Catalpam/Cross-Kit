@@ -17,13 +17,13 @@ Cross-Kit 不是单一 demo 工程，而应该同时包含四种角色：
 - 一个 CLI 工具链，用于生成 bridge、打包端上库、初始化模板。
 - 一组 examples，用来展示 Rust shared crate、iOS App、Android App 如何依赖 Cross-Kit 开发。
 
-当前仓库的问题是这些角色混在一起：
+Step 5 后，主线角色已经初步拆开，但 Android 和通用模板仍待后续步骤完成：
 
-- `example/shared` 直接依赖 `crates/ck-vm-macros`，还没有依赖一个统一的 `cross-kit` crate。
-- `tools/ck-swift-packager` 是工具，但没有纳入统一 CLI。
-- `example/ios` 依赖 `example/shared/dist/CrossKitShared`，这个目录是生成产物，不应该进 git；长期应由 CLI 重新生成端上可依赖库。
-- `example/android` 已有手写 bridge 雏形，但缺少 UniFFI Kotlin binding 和 `.so`，Android 还不是可验收闭环。
-- `old-example` 是 SigSong 历史项目和旧工具参考，占用体量大，不应继续留在这个仓库里，也不应进入 workspace。
+- `examples/counter-list/shared` 依赖公开 `cross-kit` crate，不再直接依赖 macro crate。
+- `crates/cross-kit-cli` 提供 `cross-kit` 二进制，当前已接入 iOS package 命令。
+- `examples/counter-list/ios` 依赖 CLI 生成的 `examples/counter-list/dist/ios/CrossKitShared`，生成产物不进 git。
+- `examples/counter-list/android` 仍处于部分集成状态，缺少可直接依赖的 AAR/Maven artifact 闭环。
+- `old-example` 已移动到仓库上一层 `../Cross-Kit-old-example`，不在仓库内，不进入 workspace。
 
 ## 1. 最终工程角色
 
@@ -602,10 +602,10 @@ Review 重点：
 ```bash
 cargo fmt --all
 cargo test --workspace
-cargo llvm-cov --workspace --summary-only
+cargo llvm-cov --workspace --exclude cross-kit-packager-ios --summary-only
 cargo run -p cross-kit-cli -- ios package --config examples/counter-list/cross-kit.toml
-xcodebuild -project examples/counter-list/ios/CrossKitExample.xcodeproj \
-  -scheme CrossKitExample \
+xcodebuild -project examples/counter-list/ios/crosskit-example-ios.xcodeproj \
+  -scheme crosskit-example-ios \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' build
 ```
@@ -724,10 +724,10 @@ Review 重点：
 ```bash
 cargo fmt --all
 cargo test --workspace
-cargo llvm-cov --workspace --summary-only
+cargo llvm-cov --workspace --exclude cross-kit-packager-ios --summary-only
 cargo run -p cross-kit-cli -- ios package --config examples/counter-list/cross-kit.toml
-xcodebuild -project examples/counter-list/ios/CrossKitExample.xcodeproj \
-  -scheme CrossKitExample \
+xcodebuild -project examples/counter-list/ios/crosskit-example-ios.xcodeproj \
+  -scheme crosskit-example-ios \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' build
 git status --short

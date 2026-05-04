@@ -2,18 +2,18 @@
 
 Step 4 introduces the first supported CLI path for generating the iOS端上库 from a Rust SDK crate.
 
-Current transitional example path:
+Current example path:
 
 ```bash
-cargo run -p cross-kit-cli -- ios package --config example/cross-kit.toml
+cargo run -p cross-kit-cli -- ios package --config examples/counter-list/cross-kit.toml
 ```
 
 The CLI reads `cross-kit.toml`, compiles the Rust shared crate for the configured Apple targets, runs UniFFI Swift binding generation, asks `cross-kit-codegen` for Swift bridge files, and writes a Swift Package under the configured iOS output directory.
 
-For the current `example` layout, the output is:
+For the current `examples/counter-list` layout, the output is:
 
 ```text
-example/dist/ios/CrossKitShared/
+examples/counter-list/dist/ios/CrossKitShared/
   Package.swift
   Sources/CrossKitShared/
     cross_kit_shared.swift
@@ -21,7 +21,7 @@ example/dist/ios/CrossKitShared/
   cross_kit_sharedFFI.xcframework
 ```
 
-`example/ios` depends on that generated Swift Package through a local SwiftPM reference:
+`examples/counter-list/ios` depends on that generated Swift Package through a local SwiftPM reference:
 
 ```text
 ../dist/ios/CrossKitShared
@@ -30,9 +30,9 @@ example/dist/ios/CrossKitShared/
 The generated `dist/` directory is ignored by git. It must be recreated from source before opening or building the iOS example:
 
 ```bash
-rm -rf example/dist
-cargo run -p cross-kit-cli -- ios package --config example/cross-kit.toml
-xcodebuild -project example/ios/crosskit-example-ios.xcodeproj \
+rm -rf examples/counter-list/dist
+cargo run -p cross-kit-cli -- ios package --config examples/counter-list/cross-kit.toml
+xcodebuild -project examples/counter-list/ios/crosskit-example-ios.xcodeproj \
   -scheme crosskit-example-ios \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' build
@@ -57,4 +57,5 @@ format = "spm"
 swift_bridges = true
 ```
 
-Paths are resolved relative to the config file. After Step 5 moves `example` to `examples/counter-list`, the same config shape should move with the example and keep output under `examples/counter-list/dist/ios`.
+Paths are resolved relative to the config file, so the example config keeps
+generated output under `examples/counter-list/dist/ios`.

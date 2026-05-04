@@ -147,6 +147,27 @@ mod tests {
     }
 
     #[test]
+    fn loads_counter_list_example_config_after_directory_migration() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let config_path = repo_root.join("examples/counter-list/cross-kit.toml");
+
+        let options = load_ios_options(&config_path).unwrap();
+
+        assert_eq!(
+            options.crate_path,
+            repo_root.join("examples/counter-list/shared")
+        );
+        assert_eq!(
+            options.output,
+            Some(repo_root.join("examples/counter-list/dist/ios"))
+        );
+        assert_eq!(options.package_name.as_deref(), Some("CrossKitShared"));
+        assert_eq!(options.package.as_deref(), Some("shared"));
+        assert_eq!(options.lib_name.as_deref(), Some("cross_kit_shared"));
+        assert_eq!(options.metadata_bin, "ck_vm_metadata");
+    }
+
+    #[test]
     fn rejects_missing_ios_section() {
         let config = CrossKitConfig::from_toml_str(
             r#"

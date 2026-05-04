@@ -1,6 +1,8 @@
-# Current Inventory Before Refactor
+# Repository Inventory Notes
 
-This document records the repository state at the start of Step 0 from `docs/refactor-plan.md`.
+This document records the repository state at the start of Step 0 from
+`docs/refactor-plan.md`, plus the current mainline locations after later
+refactor steps.
 
 ## Start State
 
@@ -31,9 +33,9 @@ Notes:
 - `old-example/Cargo.toml` and `old-example/Cargo.lock` were already deleted before Step 0 started.
 - Step 0 does not revert or rewrite unrelated existing changes.
 
-## Repository Roles Observed
+## Step 0 Repository Roles Observed
 
-Main Cross-Kit prototype:
+Main Cross-Kit prototype at the start of Step 0:
 
 - `example/shared`: Rust SDK prototype using UniFFI and VM metadata macros.
 - `example/ios`: SwiftUI example consuming generated `CrossKitShared` Swift package.
@@ -44,6 +46,23 @@ Main Cross-Kit prototype:
 Historical material:
 
 - `old-example`: SigSong historical project and old packaging references.
+
+## Current Mainline Locations
+
+After Step 5, active Cross-Kit example paths are:
+
+- `examples/counter-list/shared`: Rust SDK prototype using UniFFI and the public
+  `cross-kit` crate.
+- `examples/counter-list/ios`: SwiftUI example consuming the generated
+  `CrossKitShared` Swift package from `examples/counter-list/dist/ios`.
+- `examples/counter-list/android`: Compose example awaiting the Android
+  packager/AAR flow in later steps.
+- `crates/cross-kit`: public Rust runtime crate.
+- `crates/cross-kit-cli`: `cross-kit` CLI binary.
+- `crates/cross-kit-packager-ios`: current SwiftPM/XCFramework packager.
+
+`old-example` remains outside the repository at `../Cross-Kit-old-example` and
+is not part of the workspace.
 
 ## old-example Inventory
 

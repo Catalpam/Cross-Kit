@@ -68,7 +68,7 @@ mod tests {
             .map(|item| item["ir"].clone())
             .collect::<Vec<_>>();
         let expected_ir: Vec<Value> = serde_json::from_str(include_str!(
-            "../../../../fixtures/metadata/counter-list.json"
+            "../../../../../fixtures/metadata/counter-list.json"
         ))
         .unwrap();
 

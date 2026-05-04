@@ -9,7 +9,7 @@ crate-type = ["staticlib", "cdylib", "lib"]
 
 [dependencies]
 chrono = "0.4"
-cross-kit = { path = "../../crates/cross-kit" }
+cross-kit = { path = "../../../crates/cross-kit" }
 uniffi = "0.29"
 
 [dev-dependencies]
