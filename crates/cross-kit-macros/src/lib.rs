@@ -3,25 +3,46 @@ use quote::{quote, ToTokens};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream};
-use syn::{ImplItem, ItemImpl, LitStr, Result as SynResult, Token};
+use syn::spanned::Spanned;
+use syn::{ImplItem, ItemImpl, LitStr, Path, PathArguments, Result as SynResult, Token};
 
 struct MacroArgs {
     values: HashMap<String, String>,
+    paths: HashMap<String, PathArg>,
+}
+
+#[derive(Clone)]
+struct PathArg {
+    path: Path,
+    span: proc_macro2::Span,
 }
 
 impl Parse for MacroArgs {
     fn parse(input: ParseStream) -> SynResult<Self> {
         let mut values = HashMap::new();
+        let mut paths = HashMap::new();
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
+            let key_name = key.to_string();
             input.parse::<Token![=]>()?;
-            let value: LitStr = input.parse()?;
-            values.insert(key.to_string(), value.value());
+            if is_path_arg_key(&key_name) {
+                let path: Path = input.parse()?;
+                paths.insert(
+                    key_name,
+                    PathArg {
+                        span: path.span(),
+                        path,
+                    },
+                );
+            } else {
+                let value: LitStr = input.parse()?;
+                values.insert(key_name, value.value());
+            }
             if input.peek(Token![,]) {
                 input.parse::<Token![,]>()?;
             }
         }
-        Ok(Self { values })
+        Ok(Self { values, paths })
     }
 }
 
@@ -98,6 +119,7 @@ fn expand_ck_vm_bridge(
         factory_bridge: arg_value(&args, &["factory_bridge", "factory_bridge_name"]),
         methods: methods.clone(),
     };
+    let vm_meta = apply_path_args(&args, vm_meta)?;
 
     let (vm_meta, ir, swift_code) = match finalize_metadata(vm_meta) {
         Ok(value) => value,
@@ -169,11 +191,113 @@ struct VmMetaLocal {
     methods: Vec<MethodInfo>,
 }
 
+fn is_path_arg_key(key: &str) -> bool {
+    matches!(key, "factory" | "diff" | "item")
+}
+
 fn arg_value(args: &MacroArgs, keys: &[&str]) -> String {
     keys.iter()
         .find_map(|key| args.values.get(*key))
         .cloned()
         .unwrap_or_default()
+}
+
+fn apply_path_args(args: &MacroArgs, mut meta: VmMetaLocal) -> SynResult<VmMetaLocal> {
+    if let Some(factory) = args.paths.get("factory") {
+        let (factory_type, factory_method) = parse_factory_path(factory)?;
+        apply_path_value(
+            &mut meta.factory_type,
+            &factory_type,
+            "factory",
+            "factory_type",
+            factory.span,
+        )?;
+        apply_path_value(
+            &mut meta.factory_method,
+            &factory_method,
+            "factory",
+            "factory_method",
+            factory.span,
+        )?;
+    }
+    if let Some(diff) = args.paths.get("diff") {
+        let diff_type = parse_type_path(diff, "diff")?;
+        apply_path_value(
+            &mut meta.diff_type,
+            &diff_type,
+            "diff",
+            "diff_type",
+            diff.span,
+        )?;
+    }
+    if let Some(item) = args.paths.get("item") {
+        let list_item_type = parse_type_path(item, "item")?;
+        apply_path_value(
+            &mut meta.list_item_type,
+            &list_item_type,
+            "item",
+            "list_item_type",
+            item.span,
+        )?;
+    }
+    Ok(meta)
+}
+
+fn parse_factory_path(arg: &PathArg) -> SynResult<(String, String)> {
+    let segments = arg.path.segments.iter().collect::<Vec<_>>();
+    if segments.len() != 2
+        || segments
+            .iter()
+            .any(|segment| !path_segment_is_plain(segment))
+    {
+        return Err(syn::Error::new(
+            arg.span,
+            "factory path must be exactly `FactoryType::method`",
+        ));
+    }
+    Ok((segments[0].ident.to_string(), segments[1].ident.to_string()))
+}
+
+fn parse_type_path(arg: &PathArg, key: &str) -> SynResult<String> {
+    if arg.path.segments.is_empty()
+        || arg
+            .path
+            .segments
+            .iter()
+            .any(|segment| !path_segment_is_plain(segment))
+    {
+        return Err(syn::Error::new(
+            arg.span,
+            format!("{key} path must be a plain Rust type path"),
+        ));
+    }
+    Ok(platform_export_type_name(&normalize_rust_type(
+        &arg.path.to_token_stream().to_string(),
+    )))
+}
+
+fn path_segment_is_plain(segment: &syn::PathSegment) -> bool {
+    matches!(segment.arguments, PathArguments::None)
+}
+
+fn apply_path_value(
+    existing: &mut String,
+    value: &str,
+    path_key: &str,
+    legacy_key: &str,
+    span: proc_macro2::Span,
+) -> SynResult<()> {
+    if existing.trim().is_empty() {
+        *existing = value.to_string();
+        return Ok(());
+    }
+    if existing == value {
+        return Ok(());
+    }
+    Err(syn::Error::new(
+        span,
+        format!("{path_key} conflicts with `{legacy_key}`: `{value}` != `{existing}`"),
+    ))
 }
 
 fn finalize_metadata(mut meta: VmMetaLocal) -> Result<(VmMetaLocal, Value, String), String> {
@@ -536,6 +660,84 @@ mod tests {
             arg_value(&args, &["factory_bridge", "factory_bridge_name"]),
             "AppBridge"
         );
+    }
+
+    #[test]
+    fn parses_mixed_string_and_path_macro_args() {
+        let args: MacroArgs = syn::parse2(quote!(
+            mode = "state",
+            bridge = "CustomCounterBridge",
+            factory = AppViewModel::make_counter_vm,
+            diff = types::ListDiff,
+            item = types::ListItem,
+        ))
+        .unwrap();
+
+        assert_eq!(args.values["mode"], "state");
+        assert_eq!(args.values["bridge"], "CustomCounterBridge");
+        assert_eq!(
+            normalize_rust_type(&args.paths["factory"].path.to_token_stream().to_string()),
+            "AppViewModel::make_counter_vm"
+        );
+        assert_eq!(
+            parse_type_path(&args.paths["diff"], "diff").unwrap(),
+            "ListDiff"
+        );
+        assert_eq!(
+            parse_type_path(&args.paths["item"], "item").unwrap(),
+            "ListItem"
+        );
+    }
+
+    #[test]
+    fn path_args_merge_with_legacy_values_and_report_conflicts() {
+        let args: MacroArgs = syn::parse2(quote!(
+            factory = AppViewModel::make_counter_vm,
+            factory_type = "AppViewModel",
+            factory_method = "make_counter_vm",
+            diff = ListDiff,
+            diff_type = "ListDiff",
+            item = ListItem,
+            list_item_type = "ListItem",
+        ))
+        .unwrap();
+        let mut legacy_meta = list_meta();
+        legacy_meta.factory_type = "AppViewModel".to_string();
+        legacy_meta.factory_method = "make_counter_vm".to_string();
+        let meta = apply_path_args(&args, legacy_meta).unwrap();
+
+        assert_eq!(meta.factory_type, "AppViewModel");
+        assert_eq!(meta.factory_method, "make_counter_vm");
+        assert_eq!(meta.diff_type, "ListDiff");
+        assert_eq!(meta.list_item_type, "ListItem");
+
+        let args: MacroArgs = syn::parse2(quote!(
+            factory = AppViewModel::make_counter_vm,
+            factory_type = "OtherViewModel",
+        ))
+        .unwrap();
+        let mut legacy_meta = list_meta();
+        legacy_meta.factory_type = "OtherViewModel".to_string();
+        let error = apply_path_args(&args, legacy_meta).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("factory conflicts with `factory_type`"));
+    }
+
+    #[test]
+    fn factory_path_rejects_unsupported_shapes() {
+        let one_segment: MacroArgs = syn::parse2(quote!(factory = AppViewModel)).unwrap();
+        assert!(parse_factory_path(&one_segment.paths["factory"])
+            .unwrap_err()
+            .to_string()
+            .contains("FactoryType::method"));
+
+        let nested: MacroArgs =
+            syn::parse2(quote!(factory = AppViewModel::nested::make_counter_vm)).unwrap();
+        assert!(parse_factory_path(&nested.paths["factory"])
+            .unwrap_err()
+            .to_string()
+            .contains("FactoryType::method"));
     }
 
     #[test]

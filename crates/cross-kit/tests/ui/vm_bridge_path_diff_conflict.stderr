@@ -1,0 +1,5 @@
+error: diff conflicts with `diff_type`: `ListDiff` != `OtherDiff`
+  --> tests/ui/vm_bridge_path_diff_conflict.rs:17:12
+   |
+17 |     diff = ListDiff,
+   |            ^^^^^^^^

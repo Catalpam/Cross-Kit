@@ -1,0 +1,5 @@
+error: factory path must be exactly `FactoryType::method`
+  --> tests/ui/vm_bridge_path_factory_nested.rs:12:50
+   |
+12 | #[cross_kit::vm_bridge(mode = "state", factory = AppViewModel::nested::make_counter_vm)]
+   |                                                  ^^^^^^^^^^^^

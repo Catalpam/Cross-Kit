@@ -1,0 +1,5 @@
+error: item conflicts with `list_item_type`: `ListItem` != `OtherItem`
+  --> tests/ui/vm_bridge_path_item_conflict.rs:18:12
+   |
+18 |     item = ListItem,
+   |            ^^^^^^^^

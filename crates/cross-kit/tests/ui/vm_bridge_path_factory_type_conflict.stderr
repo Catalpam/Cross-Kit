@@ -1,0 +1,5 @@
+error: factory conflicts with `factory_type`: `AppViewModel` != `OtherViewModel`
+  --> tests/ui/vm_bridge_path_factory_type_conflict.rs:14:15
+   |
+14 |     factory = AppViewModel::make_counter_vm,
+   |               ^^^^^^^^^^^^

@@ -575,8 +575,7 @@ pub struct CounterViewModel {
 
 #[vm_bridge(
     mode = "state",
-    factory_type = "AppViewModel",
-    factory_method = "make_counter_vm"
+    factory = AppViewModel::make_counter_vm
 )]
 #[uniffi::export]
 impl CounterViewModel {
@@ -605,10 +604,9 @@ pub struct ListViewModel {
 
 #[vm_bridge(
     mode = "diff_list",
-    diff_type = "ListDiff",
-    list_item_type = "ListItem",
-    factory_type = "AppViewModel",
-    factory_method = "make_list_vm"
+    diff = ListDiff,
+    item = ListItem,
+    factory = AppViewModel::make_list_vm
 )]
 #[uniffi::export]
 impl ListViewModel {
