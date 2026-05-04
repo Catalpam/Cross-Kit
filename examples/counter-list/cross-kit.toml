@@ -12,3 +12,10 @@ build_mode = "release"
 lib_type = "static"
 format = "spm"
 swift_bridges = true
+
+[android]
+package_name = "com.crosskit.shared"
+output = "android/app/build/generated/cross-kit"
+jni_libs_output = "android/app/src/main/jniLibs"
+targets = ["arm64-v8a", "x86_64"]
+build_mode = "release"

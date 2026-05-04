@@ -1,9 +1,11 @@
 use anyhow::{Context, Result, bail};
-use clap::{Parser, Subcommand};
-use cross_kit_core::{CONFIG_FILE_NAME, CrossKitConfig};
+use camino::Utf8PathBuf;
+use clap::{Parser, Subcommand, ValueEnum};
+use cross_kit_core::{CONFIG_FILE_NAME, CrossKitConfig, VmMetadata};
 use cross_kit_packager_ios::{BuildMode, IosPackageOptions, LibType, PackageFormat};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 use std::str::FromStr;
 
 #[derive(Debug, Parser)]
@@ -20,6 +22,16 @@ enum Command {
         #[command(subcommand)]
         command: IosCommand,
     },
+    /// Generate platform bridge sources.
+    Gen {
+        #[command(subcommand)]
+        command: GenCommand,
+    },
+    /// Android build helpers before AAR packaging exists.
+    Android {
+        #[command(subcommand)]
+        command: AndroidCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -30,6 +42,34 @@ enum IosCommand {
         #[arg(long, default_value = CONFIG_FILE_NAME)]
         config: PathBuf,
     },
+}
+
+#[derive(Debug, Subcommand)]
+enum GenCommand {
+    /// Generate bridge sources for a platform.
+    Bridges {
+        /// Platform to generate.
+        #[arg(long)]
+        platform: Platform,
+        /// Path to cross-kit.toml.
+        #[arg(long, default_value = CONFIG_FILE_NAME)]
+        config: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum AndroidCommand {
+    /// Build Android native libraries and UniFFI Kotlin bindings.
+    BuildNative {
+        /// Path to cross-kit.toml.
+        #[arg(long, default_value = CONFIG_FILE_NAME)]
+        config: PathBuf,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum Platform {
+    Android,
 }
 
 fn main() -> Result<()> {
@@ -45,6 +85,29 @@ fn run(cli: Cli) -> Result<()> {
             let options = load_ios_options(&config)?;
             let report = cross_kit_packager_ios::package_ios(&options)?;
             println!("iOS package written to {}", report.package_root.display());
+        }
+        Command::Gen {
+            command:
+                GenCommand::Bridges {
+                    platform: Platform::Android,
+                    config,
+                },
+        } => {
+            let report = generate_android_bridges(&config)?;
+            println!(
+                "Android bridges written to {}",
+                report.bridge_output.display()
+            );
+        }
+        Command::Android {
+            command: AndroidCommand::BuildNative { config },
+        } => {
+            let report = build_android_native(&config)?;
+            println!(
+                "Android native libraries written to {}; Kotlin bindings written to {}",
+                report.jni_libs_output.display(),
+                report.binding_output.display()
+            );
         }
     }
     Ok(())
@@ -102,9 +165,257 @@ fn resolve_relative(base: &Path, value: &str) -> PathBuf {
     }
 }
 
+#[derive(Debug)]
+struct AndroidPaths {
+    crate_path: PathBuf,
+    package_name: String,
+    bridge_output: PathBuf,
+    binding_output: PathBuf,
+    jni_libs_output: PathBuf,
+    targets: Vec<String>,
+    build_mode: String,
+    lib_name: String,
+    metadata_bin: String,
+}
+
+#[derive(Debug)]
+struct AndroidBridgeReport {
+    bridge_output: PathBuf,
+}
+
+#[derive(Debug)]
+struct AndroidNativeReport {
+    binding_output: PathBuf,
+    jni_libs_output: PathBuf,
+}
+
+#[derive(Debug)]
+struct AndroidNativePlan {
+    manifest: PathBuf,
+    library: PathBuf,
+}
+
+fn android_paths_from_config(config_path: &Path, config: &CrossKitConfig) -> Result<AndroidPaths> {
+    let android = config
+        .android
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("missing [android] section in {}", config_path.display()))?;
+    if config.shared.crate_path.trim().is_empty() {
+        bail!("[shared].crate_path must not be empty");
+    }
+    if android.build_mode != "debug" && android.build_mode != "release" {
+        bail!(
+            "unsupported Android build mode '{}'; expected 'debug' or 'release'",
+            android.build_mode
+        );
+    }
+    if android.targets.is_empty()
+        || android
+            .targets
+            .iter()
+            .any(|target| target.trim().is_empty())
+    {
+        bail!("[android].targets must contain at least one non-empty target");
+    }
+
+    let config_dir = config_path.parent().unwrap_or_else(|| Path::new("."));
+    let generated_root = android
+        .output
+        .as_ref()
+        .map(|output| resolve_relative(config_dir, output))
+        .unwrap_or_else(|| resolve_relative(config_dir, "android/app/build/generated/cross-kit"));
+    Ok(AndroidPaths {
+        crate_path: resolve_relative(config_dir, &config.shared.crate_path),
+        package_name: android
+            .package_name
+            .clone()
+            .unwrap_or_else(|| "com.crosskit.shared".to_string()),
+        bridge_output: generated_root.join("bridges"),
+        binding_output: generated_root.join("uniffi"),
+        jni_libs_output: android
+            .jni_libs_output
+            .as_ref()
+            .map(|output| resolve_relative(config_dir, output))
+            .unwrap_or_else(|| resolve_relative(config_dir, "android/app/src/main/jniLibs")),
+        targets: android.targets.clone(),
+        build_mode: android.build_mode.clone(),
+        lib_name: config
+            .shared
+            .lib_name
+            .clone()
+            .unwrap_or_else(|| "cross_kit_shared".to_string()),
+        metadata_bin: config.shared.metadata_bin.clone(),
+    })
+}
+
+fn generate_android_bridges(config_path: &Path) -> Result<AndroidBridgeReport> {
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("failed to read config {}", config_path.display()))?;
+    let config = CrossKitConfig::from_toml_str(&content)
+        .with_context(|| format!("failed to parse {}", config_path.display()))?;
+    let paths = android_paths_from_config(config_path, &config)?;
+    let metadatas = load_vm_metadatas(&paths)?;
+
+    replace_generated_dir(&paths.bridge_output)?;
+    for metadata in &metadatas {
+        let files = cross_kit_codegen::generate_kotlin_bridge(metadata, &paths.package_name)?;
+        for file in files.files {
+            let path = paths.bridge_output.join(file.path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&path, file.contents)?;
+        }
+    }
+
+    Ok(AndroidBridgeReport {
+        bridge_output: paths.bridge_output,
+    })
+}
+
+fn build_android_native(config_path: &Path) -> Result<AndroidNativeReport> {
+    let content = fs::read_to_string(config_path)
+        .with_context(|| format!("failed to read config {}", config_path.display()))?;
+    let config = CrossKitConfig::from_toml_str(&content)
+        .with_context(|| format!("failed to parse {}", config_path.display()))?;
+    let paths = android_paths_from_config(config_path, &config)?;
+    let plan = android_native_plan(&paths)?;
+
+    fs::create_dir_all(&paths.jni_libs_output)?;
+    let command = cargo_ndk_command(&paths, &plan.manifest);
+    run_status(command, "cargo ndk build")?;
+    generate_uniffi_kotlin_bindings(&paths, &plan.manifest, &plan.library)?;
+
+    Ok(AndroidNativeReport {
+        binding_output: paths.binding_output,
+        jni_libs_output: paths.jni_libs_output,
+    })
+}
+
+fn android_native_plan(paths: &AndroidPaths) -> Result<AndroidNativePlan> {
+    let first_target = paths
+        .targets
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("[android].targets must not be empty"))?;
+    Ok(AndroidNativePlan {
+        manifest: paths.crate_path.join("Cargo.toml"),
+        library: paths
+            .jni_libs_output
+            .join(first_target)
+            .join(format!("lib{}.so", paths.lib_name)),
+    })
+}
+
+fn cargo_ndk_command(paths: &AndroidPaths, manifest: &Path) -> ProcessCommand {
+    let mut command = ProcessCommand::new("cargo");
+    command.arg("ndk");
+    for target in &paths.targets {
+        command.arg("-t").arg(target);
+    }
+    command
+        .arg("-o")
+        .arg(&paths.jni_libs_output)
+        .arg("build")
+        .arg("--manifest-path")
+        .arg(manifest);
+    if paths.build_mode == "release" {
+        command.arg("--release");
+    }
+    command
+}
+
+fn load_vm_metadatas(paths: &AndroidPaths) -> Result<Vec<VmMetadata>> {
+    let manifest = paths.crate_path.join("Cargo.toml");
+    let output = ProcessCommand::new("cargo")
+        .arg("run")
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .arg("--bin")
+        .arg(&paths.metadata_bin)
+        .output()
+        .with_context(|| format!("failed to run metadata binary {}", paths.metadata_bin))?;
+    if !output.status.success() {
+        bail!(
+            "metadata binary {} failed:\n{}",
+            paths.metadata_bin,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    let values: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout)
+        .with_context(|| format!("failed to parse metadata JSON from {}", paths.metadata_bin))?;
+    values
+        .into_iter()
+        .map(|value| {
+            let ir = value.get("ir").cloned().unwrap_or(value);
+            serde_json::from_value(ir).context("failed to parse VM metadata IR")
+        })
+        .collect()
+}
+
+fn generate_uniffi_kotlin_bindings(
+    paths: &AndroidPaths,
+    manifest: &Path,
+    library: &Path,
+) -> Result<()> {
+    if !library.exists() {
+        bail!("expected Android library at {}", library.display());
+    }
+    replace_generated_dir(&paths.binding_output)?;
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(manifest)
+        .exec()
+        .context("failed to load Cargo metadata for UniFFI")?;
+    let config_supplier = uniffi_bindgen::cargo_metadata::CrateConfigSupplier::from(metadata);
+    let library = utf8_path(library)?;
+    let out_dir = utf8_path(&paths.binding_output)?;
+    uniffi_bindgen::library_mode::generate_bindings(
+        &library,
+        None,
+        &uniffi_bindgen::bindings::KotlinBindingGenerator,
+        &config_supplier,
+        None,
+        &out_dir,
+        false,
+    )
+    .context("failed to generate UniFFI Kotlin bindings")?;
+    Ok(())
+}
+
+fn replace_generated_dir(path: &Path) -> Result<()> {
+    if path.exists() {
+        fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", path.display()))?;
+    }
+    fs::create_dir_all(path).with_context(|| format!("failed to create {}", path.display()))
+}
+
+fn utf8_path(path: &Path) -> Result<Utf8PathBuf> {
+    Utf8PathBuf::from_path_buf(path.to_path_buf())
+        .map_err(|path| anyhow::anyhow!("path is not valid UTF-8: {}", path.display()))
+}
+
+fn run_status(mut command: ProcessCommand, name: &str) -> Result<()> {
+    let status = command
+        .status()
+        .with_context(|| format!("failed to spawn {name}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        bail!("{name} failed with status {status}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{env, process};
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn temp_path(name: &str) -> PathBuf {
+        env::temp_dir().join(format!("cross-kit-cli-test-{}-{name}", process::id()))
+    }
 
     #[test]
     fn maps_ios_config_to_packager_options_with_relative_paths() {
@@ -148,10 +459,13 @@ mod tests {
 
     #[test]
     fn loads_counter_list_example_config_after_directory_migration() {
-        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let repo_root = repo_root();
         let config_path = repo_root.join("examples/counter-list/cross-kit.toml");
 
         let options = load_ios_options(&config_path).unwrap();
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config = CrossKitConfig::from_toml_str(&content).unwrap();
+        let android = android_paths_from_config(&config_path, &config).unwrap();
 
         assert_eq!(
             options.crate_path,
@@ -165,6 +479,287 @@ mod tests {
         assert_eq!(options.package.as_deref(), Some("shared"));
         assert_eq!(options.lib_name.as_deref(), Some("cross_kit_shared"));
         assert_eq!(options.metadata_bin, "ck_vm_metadata");
+        assert_eq!(
+            android.crate_path,
+            repo_root.join("examples/counter-list/shared")
+        );
+        assert_eq!(android.package_name, "com.crosskit.shared");
+        assert_eq!(
+            android.bridge_output,
+            repo_root.join("examples/counter-list/android/app/build/generated/cross-kit/bridges")
+        );
+        assert_eq!(
+            android.binding_output,
+            repo_root.join("examples/counter-list/android/app/build/generated/cross-kit/uniffi")
+        );
+        assert_eq!(
+            android.jni_libs_output,
+            repo_root.join("examples/counter-list/android/app/src/main/jniLibs")
+        );
+    }
+
+    #[test]
+    fn maps_android_config_to_generated_and_native_paths() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+            lib_name = "cross_kit_shared"
+            metadata_bin = "metadata"
+
+            [android]
+            package_name = "com.example.shared"
+            output = "android/app/build/generated/cross-kit"
+            jni_libs_output = "android/app/src/main/jniLibs"
+            targets = ["arm64-v8a"]
+            build_mode = "debug"
+            "#,
+        )
+        .unwrap();
+
+        let paths =
+            android_paths_from_config(Path::new("/tmp/project/cross-kit.toml"), &config).unwrap();
+
+        assert_eq!(paths.crate_path, PathBuf::from("/tmp/project/shared"));
+        assert_eq!(paths.package_name, "com.example.shared");
+        assert_eq!(
+            paths.bridge_output,
+            PathBuf::from("/tmp/project/android/app/build/generated/cross-kit/bridges")
+        );
+        assert_eq!(
+            paths.binding_output,
+            PathBuf::from("/tmp/project/android/app/build/generated/cross-kit/uniffi")
+        );
+        assert_eq!(
+            paths.jni_libs_output,
+            PathBuf::from("/tmp/project/android/app/src/main/jniLibs")
+        );
+        assert_eq!(paths.targets, vec!["arm64-v8a"]);
+        assert_eq!(paths.build_mode, "debug");
+        assert_eq!(paths.lib_name, "cross_kit_shared");
+        assert_eq!(paths.metadata_bin, "metadata");
+    }
+
+    #[test]
+    fn builds_android_native_plan_and_cargo_ndk_command() {
+        let paths = AndroidPaths {
+            crate_path: PathBuf::from("/tmp/project/shared"),
+            package_name: "com.crosskit.shared".to_string(),
+            bridge_output: PathBuf::from("/tmp/project/android/generated/bridges"),
+            binding_output: PathBuf::from("/tmp/project/android/generated/uniffi"),
+            jni_libs_output: PathBuf::from("/tmp/project/android/jniLibs"),
+            targets: vec!["arm64-v8a".to_string(), "x86_64".to_string()],
+            build_mode: "release".to_string(),
+            lib_name: "cross_kit_shared".to_string(),
+            metadata_bin: "ck_vm_metadata".to_string(),
+        };
+
+        let plan = android_native_plan(&paths).unwrap();
+        let command = cargo_ndk_command(&paths, &plan.manifest);
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            plan.manifest,
+            PathBuf::from("/tmp/project/shared/Cargo.toml")
+        );
+        assert_eq!(
+            plan.library,
+            PathBuf::from("/tmp/project/android/jniLibs/arm64-v8a/libcross_kit_shared.so")
+        );
+        assert_eq!(command.get_program(), "cargo");
+        assert_eq!(
+            args,
+            vec![
+                "ndk",
+                "-t",
+                "arm64-v8a",
+                "-t",
+                "x86_64",
+                "-o",
+                "/tmp/project/android/jniLibs",
+                "build",
+                "--manifest-path",
+                "/tmp/project/shared/Cargo.toml",
+                "--release"
+            ]
+        );
+    }
+
+    #[test]
+    fn android_native_plan_rejects_empty_targets() {
+        let paths = AndroidPaths {
+            crate_path: PathBuf::from("/tmp/project/shared"),
+            package_name: "com.crosskit.shared".to_string(),
+            bridge_output: PathBuf::from("/tmp/project/android/generated/bridges"),
+            binding_output: PathBuf::from("/tmp/project/android/generated/uniffi"),
+            jni_libs_output: PathBuf::from("/tmp/project/android/jniLibs"),
+            targets: vec![],
+            build_mode: "debug".to_string(),
+            lib_name: "cross_kit_shared".to_string(),
+            metadata_bin: "ck_vm_metadata".to_string(),
+        };
+
+        let err = android_native_plan(&paths).unwrap_err();
+
+        assert!(err.to_string().contains("[android].targets"));
+    }
+
+    #[test]
+    fn rejects_invalid_android_config_before_running_build_tools() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            targets = []
+            "#,
+        )
+        .unwrap();
+
+        let err = android_paths_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+            .unwrap_err();
+        assert!(err.to_string().contains("[android].targets"));
+
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            build_mode = "fast"
+            "#,
+        )
+        .unwrap();
+
+        let err = android_paths_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+            .unwrap_err();
+        assert!(err.to_string().contains("unsupported Android build mode"));
+
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = ""
+
+            [android]
+            "#,
+        )
+        .unwrap();
+
+        let err = android_paths_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+            .unwrap_err();
+        assert!(err.to_string().contains("[shared].crate_path"));
+    }
+
+    #[test]
+    fn generates_android_bridges_from_counter_list_metadata() {
+        let config_path = repo_root().join("examples/counter-list/cross-kit.toml");
+
+        let report = generate_android_bridges(&config_path).unwrap();
+
+        let app_bridge = report
+            .bridge_output
+            .join("com/crosskit/shared/AppViewModelBridge.kt");
+        let list_bridge = report
+            .bridge_output
+            .join("com/crosskit/shared/ListViewModelBridge.kt");
+        let app_code = fs::read_to_string(app_bridge).unwrap();
+        let list_code = fs::read_to_string(list_bridge).unwrap();
+        assert!(app_code.contains("class AppViewModelBridge(initial: Int)"));
+        assert!(app_code.contains("fun clearRoute(): Unit"));
+        assert!(app_code.contains("fun makeCounterVm(): CounterViewModelBridge"));
+        assert!(!app_code.contains("__crossKitVm"));
+        assert!(!app_code.contains("System.loadLibrary"));
+        assert!(list_code.contains("SnapshotStateList<ListItem>"));
+        assert!(
+            list_code
+                .contains("if (fromIdx !in items.indices || toIdx !in items.indices) continue")
+        );
+    }
+
+    #[test]
+    fn uniffi_binding_generation_reports_invalid_library_after_preparing_output() {
+        let root = repo_root();
+        let temp = temp_path("bad-uniffi");
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&temp).unwrap();
+        let fake_library = temp.join("libcross_kit_shared.so");
+        fs::write(&fake_library, b"not a real library").unwrap();
+        let paths = AndroidPaths {
+            crate_path: root.join("examples/counter-list/shared"),
+            package_name: "com.crosskit.shared".to_string(),
+            bridge_output: temp.join("bridges"),
+            binding_output: temp.join("uniffi"),
+            jni_libs_output: temp.join("jniLibs"),
+            targets: vec!["arm64-v8a".to_string()],
+            build_mode: "release".to_string(),
+            lib_name: "cross_kit_shared".to_string(),
+            metadata_bin: "ck_vm_metadata".to_string(),
+        };
+        let manifest = paths.crate_path.join("Cargo.toml");
+
+        let err = generate_uniffi_kotlin_bindings(&paths, &manifest, &fake_library).unwrap_err();
+
+        assert!(paths.binding_output.exists());
+        assert!(
+            err.to_string()
+                .contains("failed to generate UniFFI Kotlin bindings")
+        );
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn uniffi_binding_generation_requires_existing_library() {
+        let temp = temp_path("missing-uniffi");
+        let _ = fs::remove_dir_all(&temp);
+        let paths = AndroidPaths {
+            crate_path: PathBuf::from("/tmp/project/shared"),
+            package_name: "com.crosskit.shared".to_string(),
+            bridge_output: temp.join("bridges"),
+            binding_output: temp.join("uniffi"),
+            jni_libs_output: temp.join("jniLibs"),
+            targets: vec!["arm64-v8a".to_string()],
+            build_mode: "release".to_string(),
+            lib_name: "cross_kit_shared".to_string(),
+            metadata_bin: "ck_vm_metadata".to_string(),
+        };
+
+        let err = generate_uniffi_kotlin_bindings(
+            &paths,
+            Path::new("/tmp/project/shared/Cargo.toml"),
+            &temp.join("jniLibs/arm64-v8a/libcross_kit_shared.so"),
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("expected Android library"));
+    }
+
+    #[test]
+    fn generated_dir_and_process_helpers_report_errors() {
+        let temp = temp_path("generated-dir");
+        let _ = fs::remove_dir_all(&temp);
+        fs::create_dir_all(&temp).unwrap();
+        fs::write(temp.join("stale.txt"), "old").unwrap();
+
+        replace_generated_dir(&temp).unwrap();
+
+        assert!(temp.exists());
+        assert!(!temp.join("stale.txt").exists());
+        assert_eq!(
+            utf8_path(&temp).unwrap(),
+            Utf8PathBuf::from_path_buf(temp.clone()).unwrap()
+        );
+        assert!(run_status(ProcessCommand::new("true"), "true").is_ok());
+        assert!(
+            run_status(ProcessCommand::new("false"), "false")
+                .unwrap_err()
+                .to_string()
+                .contains("false failed")
+        );
+        let _ = fs::remove_dir_all(&temp);
     }
 
     #[test]

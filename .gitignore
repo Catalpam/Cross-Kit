@@ -49,6 +49,7 @@ target
 **/build/
 **/local.properties
 **/captures/
+**/jniLibs/
 
 # Build artifacts
 **/dist/

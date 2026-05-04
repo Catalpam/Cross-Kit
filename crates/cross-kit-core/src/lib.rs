@@ -57,6 +57,12 @@ pub struct AndroidConfig {
     pub package_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jni_libs_output: Option<String>,
+    #[serde(default = "default_android_targets")]
+    pub targets: Vec<String>,
+    #[serde(default = "default_release")]
+    pub build_mode: String,
 }
 
 fn default_metadata_bin() -> String {
@@ -65,6 +71,10 @@ fn default_metadata_bin() -> String {
 
 fn default_ios_targets() -> Vec<String> {
     vec!["ios".to_string(), "ios-sim".to_string()]
+}
+
+fn default_android_targets() -> Vec<String> {
+    vec!["arm64-v8a".to_string(), "x86_64".to_string()]
 }
 
 fn default_release() -> String {
@@ -357,6 +367,54 @@ mod tests {
         assert_eq!(ios.lib_type, "static");
         assert_eq!(ios.format, "spm");
         assert!(ios.swift_bridges);
+    }
+
+    #[test]
+    fn parses_android_codegen_and_native_build_config() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            package_name = "com.crosskit.shared"
+            output = "android/app/build/generated/cross-kit"
+            jni_libs_output = "android/app/src/main/jniLibs"
+            targets = ["arm64-v8a"]
+            build_mode = "debug"
+            "#,
+        )
+        .unwrap();
+
+        let android = config.android.unwrap();
+        assert_eq!(android.package_name.as_deref(), Some("com.crosskit.shared"));
+        assert_eq!(
+            android.output.as_deref(),
+            Some("android/app/build/generated/cross-kit")
+        );
+        assert_eq!(
+            android.jni_libs_output.as_deref(),
+            Some("android/app/src/main/jniLibs")
+        );
+        assert_eq!(android.targets, ["arm64-v8a"].map(str::to_string));
+        assert_eq!(android.build_mode, "debug");
+    }
+
+    #[test]
+    fn applies_android_config_defaults() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            "#,
+        )
+        .unwrap();
+
+        let android = config.android.unwrap();
+        assert_eq!(android.targets, ["arm64-v8a", "x86_64"].map(str::to_string));
+        assert_eq!(android.build_mode, "release");
     }
 
     #[test]

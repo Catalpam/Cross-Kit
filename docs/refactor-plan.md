@@ -772,11 +772,11 @@ Review 重点：
 ```bash
 cargo fmt --all
 cargo test --workspace
-cargo llvm-cov --workspace --summary-only
+cargo llvm-cov --workspace --exclude cross-kit-packager-ios --summary-only
 cargo run -p cross-kit-cli -- gen bridges --platform android --config examples/counter-list/cross-kit.toml
 cargo run -p cross-kit-cli -- android build-native --config examples/counter-list/cross-kit.toml
 cd examples/counter-list/android
-./gradlew assembleDebug
+JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./gradlew assembleDebug
 ```
 
 验收标准：
