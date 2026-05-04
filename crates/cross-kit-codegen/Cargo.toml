@@ -1,0 +1,11 @@
+[package]
+name = "cross-kit-codegen"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cross-kit-core = { path = "../cross-kit-core" }
+
+[dev-dependencies]
+serde_json = "1.0"

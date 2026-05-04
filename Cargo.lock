@@ -169,6 +169,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cross-kit-codegen"
+version = "0.1.0"
+dependencies = [
+ "cross-kit-core",
+ "serde_json",
+]
+
+[[package]]
 name = "cross-kit-core"
 version = "0.1.0"
 dependencies = [
@@ -180,6 +188,7 @@ dependencies = [
 name = "cross-kit-macros"
 version = "0.1.0"
 dependencies = [
+ "cross-kit-codegen",
  "cross-kit-core",
  "proc-macro2",
  "quote",

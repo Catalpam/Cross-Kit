@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/cross-kit",
+    "crates/cross-kit-codegen",
     "crates/cross-kit-core",
     "crates/cross-kit-macros",
     "example/shared",
