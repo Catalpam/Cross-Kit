@@ -1,3 +1,0 @@
-namespace greeter {
-	string greet(string name);
-};
