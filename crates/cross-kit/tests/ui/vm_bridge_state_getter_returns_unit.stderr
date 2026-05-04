@@ -1,0 +1,7 @@
+error: state VM requires get_state() with no arguments returning a non-unit state type, or an explicit state_type override
+ --> tests/ui/vm_bridge_state_getter_returns_unit.rs:7:1
+  |
+7 | #[cross_kit::vm_bridge(mode = "state")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `cross_kit::vm_bridge` (in Nightly builds, run with -Z macro-backtrace for more info)

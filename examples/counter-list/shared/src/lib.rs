@@ -520,13 +520,7 @@ pub struct AppViewModel {
     store: Store,
 }
 
-#[vm_bridge(
-    swift_bridge = "AppViewModelBridge",
-    mode = "state",
-    observer = "AppObserver",
-    observer_method = "on_state",
-    state_type = "AppState"
-)]
+#[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl AppViewModel {
     #[uniffi::constructor]
@@ -580,14 +574,9 @@ pub struct CounterViewModel {
 }
 
 #[vm_bridge(
-    swift_bridge = "CounterViewModelBridge",
     mode = "state",
-    observer = "CounterObserver",
-    observer_method = "on_state",
-    state_type = "CounterState",
     factory_type = "AppViewModel",
-    factory_method = "make_counter_vm",
-    factory_bridge = "AppViewModelBridge"
+    factory_method = "make_counter_vm"
 )]
 #[uniffi::export]
 impl CounterViewModel {
@@ -615,15 +604,11 @@ pub struct ListViewModel {
 }
 
 #[vm_bridge(
-    swift_bridge = "ListViewModelBridge",
     mode = "diff_list",
-    observer = "ListObserver",
-    observer_method = "on_diffs",
     diff_type = "ListDiff",
     list_item_type = "ListItem",
     factory_type = "AppViewModel",
-    factory_method = "make_list_vm",
-    factory_bridge = "AppViewModelBridge"
+    factory_method = "make_list_vm"
 )]
 #[uniffi::export]
 impl ListViewModel {

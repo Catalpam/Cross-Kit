@@ -1,0 +1,10 @@
+error: invalid vm_bridge metadata: metadata method `get_state` is required
+  --> tests/ui/vm_bridge_state_type_override_requires_getter.rs:7:1
+   |
+ 7 | / #[cross_kit::vm_bridge(
+ 8 | |     mode = "state",
+ 9 | |     state_type = "i32"
+10 | | )]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `cross_kit::vm_bridge` (in Nightly builds, run with -Z macro-backtrace for more info)

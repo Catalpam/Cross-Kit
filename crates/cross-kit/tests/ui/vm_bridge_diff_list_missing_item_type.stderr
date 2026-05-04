@@ -1,0 +1,10 @@
+error: invalid vm_bridge metadata: metadata field `list_item_type` is required
+  --> tests/ui/vm_bridge_diff_list_missing_item_type.rs:11:1
+   |
+11 | / #[cross_kit::vm_bridge(
+12 | |     mode = "diff_list",
+13 | |     diff_type = "ListDiff"
+14 | | )]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `cross_kit::vm_bridge` (in Nightly builds, run with -Z macro-backtrace for more info)

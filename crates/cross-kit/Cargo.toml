@@ -10,3 +10,7 @@ cross-kit-macros = { path = "../cross-kit-macros" }
 
 [dev-dependencies]
 serde_json = "1.0"
+trybuild = "1.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage)'] }

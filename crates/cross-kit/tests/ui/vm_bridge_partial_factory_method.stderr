@@ -1,0 +1,10 @@
+error: invalid vm_bridge metadata: metadata field `factory.rust_type` must not be empty
+  --> tests/ui/vm_bridge_partial_factory_method.rs:7:1
+   |
+ 7 | / #[cross_kit::vm_bridge(
+ 8 | |     mode = "state",
+ 9 | |     factory_method = "make_counter_vm"
+10 | | )]
+   | |__^
+   |
+   = note: this error originates in the attribute macro `cross_kit::vm_bridge` (in Nightly builds, run with -Z macro-backtrace for more info)

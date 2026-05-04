@@ -3,7 +3,7 @@ use quote::{quote, ToTokens};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_macro_input, ImplItem, ItemImpl, LitStr, Result as SynResult, Token};
+use syn::{ImplItem, ItemImpl, LitStr, Result as SynResult, Token};
 
 struct MacroArgs {
     values: HashMap<String, String>,
@@ -27,31 +27,17 @@ impl Parse for MacroArgs {
 
 #[proc_macro_attribute]
 pub fn ck_vm_bridge(args: TokenStream, input: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(args as MacroArgs);
-    let swift_bridge = arg_value(&args, &["bridge", "bridge_name", "swift_bridge"]);
-    let mode = args.values.get("mode").cloned().unwrap_or_default();
-    let observer = args.values.get("observer").cloned().unwrap_or_default();
-    let observer_method = args
-        .values
-        .get("observer_method")
-        .cloned()
-        .unwrap_or_default();
-    let state_type = args.values.get("state_type").cloned().unwrap_or_default();
-    let diff_type = args.values.get("diff_type").cloned().unwrap_or_default();
-    let list_item_type = args
-        .values
-        .get("list_item_type")
-        .cloned()
-        .unwrap_or_default();
-    let factory_type = args.values.get("factory_type").cloned().unwrap_or_default();
-    let factory_method = args
-        .values
-        .get("factory_method")
-        .cloned()
-        .unwrap_or_default();
-    let factory_bridge = arg_value(&args, &["factory_bridge", "factory_bridge_name"]);
+    expand_ck_vm_bridge(args.into(), input.into())
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
 
-    let input = parse_macro_input!(input as ItemImpl);
+fn expand_ck_vm_bridge(
+    args: proc_macro2::TokenStream,
+    input: proc_macro2::TokenStream,
+) -> SynResult<proc_macro2::TokenStream> {
+    let args = syn::parse2::<MacroArgs>(args)?;
+    let input = syn::parse2::<ItemImpl>(input)?;
     let self_ty = &input.self_ty;
     let vm_type = normalize_rust_type(&quote!(#self_ty).to_string());
 
@@ -87,35 +73,52 @@ pub fn ck_vm_bridge(args: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     let vm_meta = VmMetaLocal {
-        swift_bridge: swift_bridge.clone(),
-        mode: mode.clone(),
+        swift_bridge: arg_value(&args, &["bridge", "bridge_name", "swift_bridge"]),
+        mode: args.values.get("mode").cloned().unwrap_or_default(),
         vm_type: vm_type.clone(),
-        observer: observer.clone(),
-        observer_method: observer_method.clone(),
-        state_type: state_type.clone(),
-        diff_type: diff_type.clone(),
-        list_item_type: list_item_type.clone(),
-        factory_type: factory_type.clone(),
-        factory_method: factory_method.clone(),
-        factory_bridge: factory_bridge.clone(),
+        observer: args.values.get("observer").cloned().unwrap_or_default(),
+        observer_method: args
+            .values
+            .get("observer_method")
+            .cloned()
+            .unwrap_or_default(),
+        state_type: args.values.get("state_type").cloned().unwrap_or_default(),
+        diff_type: args.values.get("diff_type").cloned().unwrap_or_default(),
+        list_item_type: args
+            .values
+            .get("list_item_type")
+            .cloned()
+            .unwrap_or_default(),
+        factory_type: args.values.get("factory_type").cloned().unwrap_or_default(),
+        factory_method: args
+            .values
+            .get("factory_method")
+            .cloned()
+            .unwrap_or_default(),
+        factory_bridge: arg_value(&args, &["factory_bridge", "factory_bridge_name"]),
         methods: methods.clone(),
     };
-    let ir = metadata_ir_json(&vm_meta);
-    let swift_code = swift_code_from_ir(&ir);
+
+    let (vm_meta, ir, swift_code) = match finalize_metadata(vm_meta) {
+        Ok(value) => value,
+        Err(message) => {
+            return Err(syn::Error::new(proc_macro2::Span::call_site(), message));
+        }
+    };
 
     let meta = json!({
         "schema_version": cross_kit_core::VM_METADATA_SCHEMA_VERSION,
-        "swift_bridge": swift_bridge,
-        "mode": mode,
-        "vm_type": vm_type,
-        "observer": observer,
-        "observer_method": observer_method,
-        "state_type": state_type,
-        "diff_type": diff_type,
-        "list_item_type": list_item_type,
-        "factory_type": factory_type,
-        "factory_method": factory_method,
-        "factory_bridge": factory_bridge,
+        "swift_bridge": vm_meta.swift_bridge,
+        "mode": vm_meta.mode,
+        "vm_type": vm_meta.vm_type,
+        "observer": vm_meta.observer,
+        "observer_method": vm_meta.observer_method,
+        "state_type": vm_meta.state_type,
+        "diff_type": vm_meta.diff_type,
+        "list_item_type": vm_meta.list_item_type,
+        "factory_type": vm_meta.factory_type,
+        "factory_method": vm_meta.factory_method,
+        "factory_bridge": vm_meta.factory_bridge,
         "methods": legacy_methods_json(&methods),
         "ir": ir,
         "swift_code": swift_code,
@@ -134,22 +137,23 @@ pub fn ck_vm_bridge(args: TokenStream, input: TokenStream) -> TokenStream {
         }
     };
 
-    expanded.into()
+    Ok(expanded)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ArgInfo {
     name: String,
     ty: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct MethodInfo {
     name: String,
     args: Vec<ArgInfo>,
     ret: String,
 }
 
+#[derive(Debug)]
 struct VmMetaLocal {
     swift_bridge: String,
     mode: String,
@@ -170,6 +174,107 @@ fn arg_value(args: &MacroArgs, keys: &[&str]) -> String {
         .find_map(|key| args.values.get(*key))
         .cloned()
         .unwrap_or_default()
+}
+
+fn finalize_metadata(mut meta: VmMetaLocal) -> Result<(VmMetaLocal, Value, String), String> {
+    apply_defaults(&mut meta)?;
+    let ir = metadata_ir_json(&meta);
+    let metadata = serde_json::from_value::<cross_kit_core::VmMetadata>(ir.clone())
+        .map_err(|err| format!("invalid vm_bridge metadata: {err}"))?;
+    metadata
+        .validate()
+        .map_err(|err| format!("invalid vm_bridge metadata: {err}"))?;
+    let swift_code = cross_kit_codegen::generate_swift_bridge_source(&metadata)
+        .map_err(|err| format!("invalid vm_bridge metadata: {err}"))?;
+    Ok((meta, ir, swift_code))
+}
+
+fn apply_defaults(meta: &mut VmMetaLocal) -> Result<(), String> {
+    if meta.swift_bridge.trim().is_empty() {
+        meta.swift_bridge = format!("{}Bridge", meta.vm_type);
+    }
+    if meta.observer.trim().is_empty() {
+        if let Some(observer) = infer_observer_type(&meta.methods)? {
+            meta.observer = observer;
+        }
+    }
+    if meta.observer_method.trim().is_empty() {
+        meta.observer_method = match meta.mode.as_str() {
+            "state" => "on_state".to_string(),
+            "diff_list" => "on_diffs".to_string(),
+            "event" => "on_event".to_string(),
+            _ => String::new(),
+        };
+    }
+    if meta.mode == "state" && meta.state_type.trim().is_empty() {
+        meta.state_type = infer_state_type(&meta.methods).ok_or_else(|| {
+            "state VM requires get_state() with no arguments returning a non-unit state type, or an explicit state_type override"
+                .to_string()
+        })?;
+    }
+    Ok(())
+}
+
+fn infer_state_type(methods: &[MethodInfo]) -> Option<String> {
+    methods
+        .iter()
+        .find(|method| method.name == "get_state" && method.args.is_empty())
+        .map(|method| platform_export_type_name(&method.ret))
+        .filter(|ret| ret != "unit")
+}
+
+fn infer_observer_type(methods: &[MethodInfo]) -> Result<Option<String>, String> {
+    let Some(method) = methods.iter().find(|method| method.name == "subscribe") else {
+        return Ok(None);
+    };
+    if method.args.len() != 1 || method.args[0].name != "observer" {
+        return Err(
+            "cannot infer observer: subscribe must accept exactly one `observer` argument"
+                .to_string(),
+        );
+    }
+    extract_observer_type(&method.args[0].ty)
+        .map(Some)
+        .ok_or_else(|| {
+            "cannot infer observer: subscribe observer argument must be `Arc<dyn Observer>` or `std::sync::Arc<dyn Observer>`"
+                .to_string()
+        })
+}
+
+fn extract_observer_type(ty: &str) -> Option<String> {
+    ty.strip_prefix("Arc<dyn ")
+        .or_else(|| ty.strip_prefix("std::sync::Arc<dyn "))
+        .and_then(|inner| inner.strip_suffix('>'))
+        .map(str::trim)
+        .filter(|inner| !inner.is_empty())
+        .map(platform_export_type_name)
+}
+
+fn platform_export_type_name(ty: &str) -> String {
+    let mut out = String::new();
+    let mut token = String::new();
+    for ch in ty.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' || ch == ':' {
+            token.push(ch);
+        } else {
+            push_platform_type_token(&mut out, &mut token);
+            out.push(ch);
+        }
+    }
+    push_platform_type_token(&mut out, &mut token);
+    out.trim().to_string()
+}
+
+fn push_platform_type_token(out: &mut String, token: &mut String) {
+    if token.is_empty() {
+        return;
+    }
+    if token.contains("::") {
+        out.push_str(token.rsplit("::").next().unwrap_or(token.as_str()));
+    } else {
+        out.push_str(token);
+    }
+    token.clear();
 }
 
 fn metadata_ir_json(meta: &VmMetaLocal) -> Value {
@@ -212,12 +317,14 @@ fn ir_methods_json(methods: &[MethodInfo]) -> Vec<Value> {
             let args = method
                 .args
                 .iter()
-                .map(|arg| json!({"name": arg.name, "rust_type": arg.ty}))
+                .map(|arg| {
+                    json!({"name": arg.name, "rust_type": platform_export_type_name(&arg.ty)})
+                })
                 .collect::<Vec<_>>();
             json!({
                 "name": method.name,
                 "args": args,
-                "return_type": method.ret,
+                "return_type": platform_export_type_name(&method.ret),
             })
         })
         .collect()
@@ -262,11 +369,17 @@ fn resolved_factory_bridge_name(meta: &VmMetaLocal) -> String {
     }
 }
 
-fn swift_code_from_ir(ir: &Value) -> String {
+#[cfg(test)]
+fn swift_code_from_ir(ir: &Value) -> Result<String, String> {
     serde_json::from_value::<cross_kit_core::VmMetadata>(ir.clone())
-        .ok()
-        .and_then(|metadata| cross_kit_codegen::generate_swift_bridge_source(&metadata).ok())
-        .unwrap_or_default()
+        .map_err(|err| format!("invalid vm_bridge metadata: {err}"))
+        .and_then(|metadata| {
+            metadata
+                .validate()
+                .map_err(|err| format!("invalid vm_bridge metadata: {err}"))?;
+            cross_kit_codegen::generate_swift_bridge_source(&metadata)
+                .map_err(|err| format!("invalid vm_bridge metadata: {err}"))
+        })
 }
 
 fn normalize_rust_type(input: &str) -> String {
@@ -338,6 +451,37 @@ mod tests {
         }
     }
 
+    fn minimal_state_meta() -> VmMetaLocal {
+        VmMetaLocal {
+            swift_bridge: String::new(),
+            mode: "state".to_string(),
+            vm_type: "CounterViewModel".to_string(),
+            observer: String::new(),
+            observer_method: String::new(),
+            state_type: String::new(),
+            diff_type: String::new(),
+            list_item_type: String::new(),
+            factory_type: String::new(),
+            factory_method: String::new(),
+            factory_bridge: String::new(),
+            methods: vec![
+                MethodInfo {
+                    name: "subscribe".to_string(),
+                    args: vec![ArgInfo {
+                        name: "observer".to_string(),
+                        ty: "std::sync::Arc<dyn CounterObserver>".to_string(),
+                    }],
+                    ret: "i64".to_string(),
+                },
+                MethodInfo {
+                    name: "get_state".to_string(),
+                    args: Vec::new(),
+                    ret: "CounterState".to_string(),
+                },
+            ],
+        }
+    }
+
     fn list_meta() -> VmMetaLocal {
         VmMetaLocal {
             swift_bridge: "ListViewModelBridge".to_string(),
@@ -372,6 +516,104 @@ mod tests {
                 },
             ],
         }
+    }
+
+    #[test]
+    fn parses_string_macro_args_with_trailing_comma_and_aliases() {
+        let args: MacroArgs = syn::parse2(quote!(
+            mode = "state",
+            bridge_name = "CounterBridge",
+            factory_bridge_name = "AppBridge",
+        ))
+        .unwrap();
+
+        assert_eq!(args.values["mode"], "state");
+        assert_eq!(
+            arg_value(&args, &["bridge", "bridge_name"]),
+            "CounterBridge"
+        );
+        assert_eq!(
+            arg_value(&args, &["factory_bridge", "factory_bridge_name"]),
+            "AppBridge"
+        );
+    }
+
+    #[test]
+    fn expand_vm_bridge_builds_metadata_impl_and_ignores_private_methods() {
+        let expanded = expand_ck_vm_bridge(
+            quote!(mode = "state"),
+            quote! {
+                impl CounterViewModel {
+                    fn private_helper(&self) -> bool {
+                        true
+                    }
+
+                    pub fn subscribe(&self, observer: Arc<dyn CounterObserver>) -> i64 {
+                        drop(observer);
+                        1
+                    }
+
+                    pub fn get_state(&self) -> CounterState {
+                        CounterState { value: 0 }
+                    }
+
+                    pub fn reset(&self) {}
+                }
+            },
+        )
+        .unwrap()
+        .to_string();
+
+        assert!(expanded.contains("impl cross_kit :: CkVmMetadata for CounterViewModel"));
+        assert!(expanded.contains("CounterViewModelBridge"));
+        assert!(expanded.contains("CounterObserver"));
+    }
+
+    #[test]
+    fn expand_vm_bridge_falls_back_to_arg_for_non_ident_patterns() {
+        let expanded = expand_ck_vm_bridge(
+            quote!(mode = "state", state_type = "CounterState"),
+            quote! {
+                impl CounterViewModel {
+                    pub fn subscribe(&self, observer: Arc<dyn CounterObserver>) -> i64 {
+                        drop(observer);
+                        1
+                    }
+
+                    pub fn get_state(&self) -> CounterState {
+                        CounterState { value: 0 }
+                    }
+
+                    pub fn replace_state(&self, (next, _): (CounterState, bool)) -> CounterState {
+                        next
+                    }
+                }
+            },
+        )
+        .unwrap()
+        .to_string();
+
+        assert!(expanded.contains("\\\"name\\\":\\\"arg\\\""));
+    }
+
+    #[test]
+    fn expand_vm_bridge_returns_compile_error_for_invalid_metadata() {
+        let error = expand_ck_vm_bridge(
+            quote!(mode = "state"),
+            quote! {
+                impl BrokenViewModel {
+                    pub fn subscribe(&self, callback: Arc<dyn CounterObserver>) -> i64 {
+                        drop(callback);
+                        1
+                    }
+                }
+            },
+        )
+        .unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("subscribe must accept exactly one `observer` argument"));
     }
 
     #[test]
@@ -452,11 +694,161 @@ mod tests {
     }
 
     #[test]
+    fn platform_export_type_name_strips_qualified_segments_inside_generics() {
+        assert_eq!(
+            platform_export_type_name("crate::models::CounterState"),
+            "CounterState"
+        );
+        assert_eq!(
+            platform_export_type_name("Vec<crate::models::ListDiff>"),
+            "Vec<ListDiff>"
+        );
+        assert_eq!(
+            platform_export_type_name("std::sync::Arc<dyn crate::observers::CounterObserver>"),
+            "Arc<dyn CounterObserver>"
+        );
+    }
+
+    #[test]
     fn compatibility_swift_code_is_delegated_from_ir() {
         let ir = metadata_ir_json(&state_meta());
-        let code = swift_code_from_ir(&ir);
+        let code = swift_code_from_ir(&ir).unwrap();
 
         assert!(code.contains("// Generated by cross-kit-codegen."));
         assert!(code.contains("public final class CounterViewModelBridge"));
+    }
+
+    #[test]
+    fn infers_state_vm_defaults_from_impl_methods() {
+        let (meta, ir, swift_code) = finalize_metadata(minimal_state_meta()).unwrap();
+        let metadata: cross_kit_core::VmMetadata = serde_json::from_value(ir).unwrap();
+
+        assert_eq!(meta.swift_bridge, "CounterViewModelBridge");
+        assert_eq!(meta.observer, "CounterObserver");
+        assert_eq!(meta.observer_method, "on_state");
+        assert_eq!(meta.state_type, "CounterState");
+        assert_eq!(metadata.bridge_name, "CounterViewModelBridge");
+        assert_eq!(metadata.state_type.as_deref(), Some("CounterState"));
+        assert!(swift_code.contains("public final class CounterViewModelBridge"));
+    }
+
+    #[test]
+    fn inferred_platform_types_strip_rust_module_qualifiers() {
+        let mut meta = minimal_state_meta();
+        meta.methods[0].args[0].ty =
+            "std::sync::Arc<dyn crate::observers::CounterObserver>".to_string();
+        meta.methods[1].ret = "crate::models::CounterState".to_string();
+
+        let (meta, ir, _) = finalize_metadata(meta).unwrap();
+        let metadata: cross_kit_core::VmMetadata = serde_json::from_value(ir).unwrap();
+
+        assert_eq!(meta.observer, "CounterObserver");
+        assert_eq!(meta.state_type, "CounterState");
+        assert_eq!(
+            metadata.observer.as_ref().unwrap().rust_type,
+            "CounterObserver"
+        );
+        assert_eq!(metadata.state_type.as_deref(), Some("CounterState"));
+    }
+
+    #[test]
+    fn infers_diff_list_observer_defaults_but_requires_diff_types() {
+        let mut meta = list_meta();
+        meta.observer.clear();
+        meta.observer_method.clear();
+        meta.methods[0].args = vec![ArgInfo {
+            name: "observer".to_string(),
+            ty: "Arc<dyn ListObserver>".to_string(),
+        }];
+        meta.diff_type.clear();
+
+        let error = finalize_metadata(meta).unwrap_err();
+        assert!(error.contains("metadata field `diff_type` is required"));
+    }
+
+    #[test]
+    fn reports_invalid_subscribe_shape_during_macro_metadata_finalization() {
+        let mut meta = minimal_state_meta();
+        meta.methods[0].args[0].name = "callback".to_string();
+
+        let error = finalize_metadata(meta).unwrap_err();
+        assert!(error.contains("subscribe must accept exactly one `observer` argument"));
+    }
+
+    #[test]
+    fn defaults_event_observer_method_and_keeps_observer_null_when_absent() {
+        let mut meta = minimal_state_meta();
+        meta.mode = "event".to_string();
+        meta.observer.clear();
+        meta.observer_method.clear();
+        meta.state_type.clear();
+        meta.methods.clear();
+
+        apply_defaults(&mut meta).unwrap();
+        assert_eq!(meta.observer_method, "on_event");
+
+        meta.observer_method.clear();
+        assert!(optional_observer_json(&meta).is_null());
+    }
+
+    #[test]
+    fn unknown_mode_does_not_default_observer_method_before_validation() {
+        let mut meta = minimal_state_meta();
+        meta.mode = "custom".to_string();
+        meta.observer.clear();
+        meta.observer_method.clear();
+        meta.state_type.clear();
+        meta.methods.clear();
+
+        apply_defaults(&mut meta).unwrap();
+        assert!(meta.observer_method.is_empty());
+    }
+
+    #[test]
+    fn state_defaults_require_inferable_getter() {
+        let mut meta = minimal_state_meta();
+        meta.state_type.clear();
+        meta.methods.retain(|method| method.name != "get_state");
+
+        let error = apply_defaults(&mut meta).unwrap_err();
+        assert!(error.contains("state VM requires get_state()"));
+    }
+
+    #[test]
+    fn observer_inference_returns_none_when_subscribe_is_absent() {
+        let mut meta = minimal_state_meta();
+        meta.methods.retain(|method| method.name != "subscribe");
+
+        assert!(infer_observer_type(&meta.methods).unwrap().is_none());
+    }
+
+    #[test]
+    fn observer_inference_rejects_empty_dyn_target() {
+        assert!(extract_observer_type("Arc<dyn >").is_none());
+    }
+
+    #[test]
+    fn observer_inference_rejects_unsupported_pointer_shape() {
+        let methods = vec![MethodInfo {
+            name: "subscribe".to_string(),
+            args: vec![ArgInfo {
+                name: "observer".to_string(),
+                ty: "Box<dyn CounterObserver>".to_string(),
+            }],
+            ret: "i64".to_string(),
+        }];
+
+        let error = infer_observer_type(&methods).unwrap_err();
+        assert!(error.contains("Arc<dyn Observer>"));
+    }
+
+    #[test]
+    fn finalize_metadata_reports_codegen_validation_errors_without_empty_swift_code() {
+        let mut meta = minimal_state_meta();
+        meta.state_type = "WrongState".to_string();
+
+        let error = finalize_metadata(meta).unwrap_err();
+        assert!(error.contains("get_state"));
+        assert!(error.contains("return type must match state_type"));
     }
 }

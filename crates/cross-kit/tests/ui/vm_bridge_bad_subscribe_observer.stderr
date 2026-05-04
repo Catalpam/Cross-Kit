@@ -1,0 +1,7 @@
+error: cannot infer observer: subscribe observer argument must be `Arc<dyn Observer>` or `std::sync::Arc<dyn Observer>`
+ --> tests/ui/vm_bridge_bad_subscribe_observer.rs:3:1
+  |
+3 | #[cross_kit::vm_bridge(mode = "state")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `cross_kit::vm_bridge` (in Nightly builds, run with -Z macro-backtrace for more info)
