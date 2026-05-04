@@ -2,17 +2,21 @@ use anyhow::{anyhow, bail, Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 use cargo_metadata::{Metadata, MetadataCommand, Package, Target, TargetKind};
 use clap::{Parser, ValueEnum};
+use serde::Deserialize;
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::collections::BTreeMap;
 use uniffi_bindgen::bindings::SwiftBindingGenerator;
 use uniffi_bindgen::cargo_metadata::CrateConfigSupplier;
-use serde::Deserialize;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "Package a UniFFI Rust library into SwiftPM or CocoaPods")]
+#[command(
+    author,
+    version,
+    about = "Package a UniFFI Rust library into SwiftPM or CocoaPods"
+)]
 struct Args {
     /// Path to the Rust crate (directory containing Cargo.toml)
     #[arg(long, default_value = ".")]
@@ -127,21 +131,13 @@ fn main() -> Result<()> {
 
     let lib_paths = coalesce_libraries(&target_triples, &lib_paths, &output_root)?;
 
-    generate_swift_bindings(
-        &lib_paths[0],
-        &generated_dir,
-        &metadata,
-    )?;
+    generate_swift_bindings(&lib_paths[0], &generated_dir, &metadata)?;
 
     let xcframework_path = output_root.join(format!("{xcframework_name}.xcframework"));
     if xcframework_path.exists() {
         fs::remove_dir_all(&xcframework_path).ok();
     }
-    create_xcframework(
-        &lib_paths,
-        &generated_dir,
-        &xcframework_path,
-    )?;
+    create_xcframework(&lib_paths, &generated_dir, &xcframework_path)?;
     patch_xcframework(&xcframework_path, &generated_dir, &xcframework_name)?;
 
     let package_xcframework = package_root.join(format!("{xcframework_name}.xcframework"));
@@ -343,8 +339,14 @@ fn generate_swift_bindings(lib_path: &Path, out_dir: &Path, metadata: &Metadata)
         let ffi_header = out_dir.join(format!("{ffi_name}.h"));
         let ffi_modulemap = out_dir.join(format!("{ffi_name}.modulemap"));
 
-        fs::copy(swift_src.as_std_path(), sources.join(format!("{crate_name}.swift")).as_std_path())?;
-        fs::copy(ffi_header.as_std_path(), headers.join(format!("{ffi_name}.h")).as_std_path())?;
+        fs::copy(
+            swift_src.as_std_path(),
+            sources.join(format!("{crate_name}.swift")).as_std_path(),
+        )?;
+        fs::copy(
+            ffi_header.as_std_path(),
+            headers.join(format!("{ffi_name}.h")).as_std_path(),
+        )?;
 
         let mut modulemap_part = fs::OpenOptions::new()
             .read(true)
@@ -355,11 +357,7 @@ fn generate_swift_bindings(lib_path: &Path, out_dir: &Path, metadata: &Metadata)
     Ok(())
 }
 
-fn create_xcframework(
-    lib_paths: &[PathBuf],
-    generated_dir: &Path,
-    output: &Path,
-) -> Result<()> {
+fn create_xcframework(lib_paths: &[PathBuf], generated_dir: &Path, output: &Path) -> Result<()> {
     let headers = generated_dir.join("headers");
     let mut cmd = Command::new("xcodebuild");
     cmd.arg("-create-xcframework");
@@ -627,4 +625,132 @@ fn generate_swift_bridges(sources_dir: &Path, metas: &[VmMeta]) -> Result<()> {
         fs::write(bridges_dir.join(filename), content)?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn parses_step2_metadata_envelope_with_ir_and_swift_code() {
+        let metas: Vec<VmMeta> = serde_json::from_str(
+            r#"
+            [
+              {
+                "schema_version": 1,
+                "swift_bridge": "CounterViewModelBridge",
+                "mode": "state",
+                "vm_type": "CounterViewModel",
+                "observer": "CounterObserver",
+                "observer_method": "on_state",
+                "state_type": "CounterState",
+                "diff_type": "",
+                "list_item_type": "",
+                "factory_type": "AppViewModel",
+                "factory_method": "make_counter_vm",
+                "factory_bridge": "AppViewModelBridge",
+                "methods": [
+                  {
+                    "name": "subscribe",
+                    "args": [{"name": "observer", "ty": "Arc<dyn CounterObserver>"}],
+                    "ret": "i64"
+                  },
+                  {
+                    "name": "get_state",
+                    "args": [],
+                    "ret": "CounterState"
+                  }
+                ],
+                "ir": {
+                  "schema_version": 1,
+                  "rust_type": "CounterViewModel",
+                  "bridge_name": "CounterViewModelBridge",
+                  "mode": "state",
+                  "observer": {
+                    "rust_type": "CounterObserver",
+                    "method": "on_state"
+                  },
+                  "state_type": "CounterState",
+                  "factory": {
+                    "rust_type": "AppViewModel",
+                    "method": "make_counter_vm",
+                    "bridge_name": "AppViewModelBridge"
+                  },
+                  "methods": []
+                },
+                "swift_code": "public final class CounterViewModelBridge {}"
+              }
+            ]
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(metas.len(), 1);
+        assert_eq!(metas[0].swift_bridge, "CounterViewModelBridge");
+        assert_eq!(metas[0].methods[0].args[0].ty, "Arc<dyn CounterObserver>");
+        assert_eq!(
+            metas[0].swift_code.as_deref(),
+            Some("public final class CounterViewModelBridge {}")
+        );
+    }
+
+    #[test]
+    fn writes_swift_bridge_files_from_legacy_compatibility_field() {
+        let temp_dir = unique_temp_dir("ck-swift-packager-bridges");
+        let meta = VmMeta {
+            swift_bridge: "CounterViewModelBridge".to_string(),
+            mode: "state".to_string(),
+            vm_type: "CounterViewModel".to_string(),
+            observer: "CounterObserver".to_string(),
+            observer_method: "on_state".to_string(),
+            state_type: "CounterState".to_string(),
+            diff_type: String::new(),
+            list_item_type: String::new(),
+            methods: Vec::new(),
+            swift_code: Some("public final class CounterViewModelBridge {}".to_string()),
+        };
+
+        generate_swift_bridges(&temp_dir, &[meta]).unwrap();
+
+        let bridge_file = temp_dir
+            .join("Bridges")
+            .join("CounterViewModelBridge.swift");
+        assert_eq!(
+            fs::read_to_string(&bridge_file).unwrap(),
+            "public final class CounterViewModelBridge {}"
+        );
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn rejects_metadata_without_swift_code_during_compatibility_window() {
+        let temp_dir = unique_temp_dir("ck-swift-packager-missing-swift-code");
+        let meta = VmMeta {
+            swift_bridge: "CounterViewModelBridge".to_string(),
+            mode: "state".to_string(),
+            vm_type: "CounterViewModel".to_string(),
+            observer: "CounterObserver".to_string(),
+            observer_method: "on_state".to_string(),
+            state_type: "CounterState".to_string(),
+            diff_type: String::new(),
+            list_item_type: String::new(),
+            methods: Vec::new(),
+            swift_code: None,
+        };
+
+        let err = generate_swift_bridges(&temp_dir, &[meta]).unwrap_err();
+        assert!(err.to_string().contains("swift_code missing"));
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{nanos}"))
+    }
 }

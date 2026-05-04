@@ -171,11 +171,16 @@ dependencies = [
 [[package]]
 name = "cross-kit-core"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "cross-kit-macros"
 version = "0.1.0"
 dependencies = [
+ "cross-kit-core",
  "proc-macro2",
  "quote",
  "serde_json",

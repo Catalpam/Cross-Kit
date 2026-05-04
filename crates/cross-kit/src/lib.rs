@@ -4,6 +4,10 @@
 //! Cross-Kit internal crates directly.
 
 pub use cross_kit_core as core;
+pub use cross_kit_core::{
+    ArgMetadata, FactoryMetadata, MetadataValidationError, MethodMetadata, ObserverMetadata,
+    VM_METADATA_SCHEMA_VERSION, VmMetadata, VmMode,
+};
 pub use cross_kit_macros::ck_vm_bridge as vm_bridge;
 
 /// Metadata emitted by Cross-Kit VM bridge macros.

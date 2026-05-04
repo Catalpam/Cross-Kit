@@ -1,0 +1,155 @@
+[
+  {
+    "bridge_name": "AppViewModelBridge",
+    "diff_type": null,
+    "factory": null,
+    "list_item_type": null,
+    "methods": [
+      {
+        "args": [{ "name": "initial", "rust_type": "i32" }],
+        "name": "new",
+        "return_type": "Arc<Self>"
+      },
+      {
+        "args": [{ "name": "observer", "rust_type": "Arc<dyn AppObserver>" }],
+        "name": "subscribe",
+        "return_type": "i64"
+      },
+      {
+        "args": [{ "name": "id", "rust_type": "i64" }],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      },
+      { "args": [], "name": "get_state", "return_type": "AppState" },
+      { "args": [], "name": "clear_route", "return_type": "unit" },
+      { "args": [], "name": "request_summary", "return_type": "bool" },
+      {
+        "args": [],
+        "name": "make_counter_vm",
+        "return_type": "Arc<CounterViewModel>"
+      },
+      {
+        "args": [],
+        "name": "make_list_vm",
+        "return_type": "Arc<ListViewModel>"
+      },
+      {
+        "args": [],
+        "name": "action_log",
+        "return_type": "Vec<ActionLogEntry>"
+      }
+    ],
+    "mode": "state",
+    "observer": {
+      "method": "on_state",
+      "rust_type": "AppObserver"
+    },
+    "rust_type": "AppViewModel",
+    "schema_version": 1,
+    "state_type": "AppState"
+  },
+  {
+    "bridge_name": "CounterViewModelBridge",
+    "diff_type": null,
+    "factory": {
+      "bridge_name": "AppViewModelBridge",
+      "method": "make_counter_vm",
+      "rust_type": "AppViewModel"
+    },
+    "list_item_type": null,
+    "methods": [
+      {
+        "args": [{ "name": "observer", "rust_type": "Arc<dyn CounterObserver>" }],
+        "name": "subscribe",
+        "return_type": "i64"
+      },
+      {
+        "args": [{ "name": "id", "rust_type": "i64" }],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      },
+      { "args": [], "name": "increment", "return_type": "CounterState" },
+      { "args": [], "name": "get_state", "return_type": "CounterState" }
+    ],
+    "mode": "state",
+    "observer": {
+      "method": "on_state",
+      "rust_type": "CounterObserver"
+    },
+    "rust_type": "CounterViewModel",
+    "schema_version": 1,
+    "state_type": "CounterState"
+  },
+  {
+    "bridge_name": "ListViewModelBridge",
+    "diff_type": "ListDiff",
+    "factory": {
+      "bridge_name": "AppViewModelBridge",
+      "method": "make_list_vm",
+      "rust_type": "AppViewModel"
+    },
+    "list_item_type": "ListItem",
+    "methods": [
+      {
+        "args": [{ "name": "observer", "rust_type": "Arc<dyn ListObserver>" }],
+        "name": "subscribe",
+        "return_type": "i64"
+      },
+      {
+        "args": [{ "name": "id", "rust_type": "i64" }],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      },
+      { "args": [], "name": "len", "return_type": "i64" },
+      { "args": [], "name": "append_now", "return_type": "ListItem" },
+      {
+        "args": [{ "name": "index", "rust_type": "i64" }],
+        "name": "insert_now",
+        "return_type": "Option<ListItem>"
+      },
+      {
+        "args": [
+          { "name": "index", "rust_type": "i64" },
+          { "name": "timestamp_ms", "rust_type": "i64" }
+        ],
+        "name": "insert_with_timestamp",
+        "return_type": "Option<ListItem>"
+      },
+      {
+        "args": [
+          { "name": "index", "rust_type": "i64" },
+          { "name": "timestamp_ms", "rust_type": "i64" }
+        ],
+        "name": "update_with_timestamp",
+        "return_type": "Option<ListItem>"
+      },
+      {
+        "args": [{ "name": "index", "rust_type": "i64" }],
+        "name": "remove_at",
+        "return_type": "Option<ListItem>"
+      },
+      {
+        "args": [
+          { "name": "from", "rust_type": "i64" },
+          { "name": "to", "rust_type": "i64" }
+        ],
+        "name": "move_item",
+        "return_type": "bool"
+      },
+      { "args": [], "name": "sort_by_timestamp_desc", "return_type": "bool" },
+      {
+        "args": [{ "name": "diffs", "rust_type": "Vec<ListDiff>" }],
+        "name": "apply_diffs",
+        "return_type": "bool"
+      }
+    ],
+    "mode": "diff_list",
+    "observer": {
+      "method": "on_diffs",
+      "rust_type": "ListObserver"
+    },
+    "rust_type": "ListViewModel",
+    "schema_version": 1,
+    "state_type": null
+  }
+]
