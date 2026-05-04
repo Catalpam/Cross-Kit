@@ -5,6 +5,8 @@ members = [
     "crates/cross-kit-codegen",
     "crates/cross-kit-core",
     "crates/cross-kit-macros",
+    "crates/cross-kit-packager-ios",
+    "crates/cross-kit-cli",
     "example/shared",
 ]
 exclude = ["tools/ck-swift-packager"]

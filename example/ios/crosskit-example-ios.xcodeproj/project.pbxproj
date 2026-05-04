@@ -215,7 +215,7 @@
 			mainGroup = 35C4C6672F330948000AA255;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				A6B4DAA0E99841429994D542 /* XCLocalSwiftPackageReference "../shared/dist/CrossKitShared" */,
+				A6B4DAA0E99841429994D542 /* XCLocalSwiftPackageReference "../dist/ios/CrossKitShared" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 35C4C6712F330948000AA255 /* Products */;
@@ -629,16 +629,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		A6B4DAA0E99841429994D542 /* XCLocalSwiftPackageReference "../shared/dist/CrossKitShared" */ = {
+		A6B4DAA0E99841429994D542 /* XCLocalSwiftPackageReference "../dist/ios/CrossKitShared" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../shared/dist/CrossKitShared;
+			relativePath = ../dist/ios/CrossKitShared;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		096B069ED51F453DB4437D21 /* CrossKitShared */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = A6B4DAA0E99841429994D542 /* XCLocalSwiftPackageReference "../shared/dist/CrossKitShared" */;
+			package = A6B4DAA0E99841429994D542 /* XCLocalSwiftPackageReference "../dist/ios/CrossKitShared" */;
 			productName = CrossKitShared;
 		};
 /* End XCSwiftPackageProductDependency section */

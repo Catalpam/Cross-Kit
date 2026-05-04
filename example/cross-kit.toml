@@ -1,0 +1,14 @@
+[shared]
+crate_path = "shared"
+package = "shared"
+lib_name = "cross_kit_shared"
+metadata_bin = "ck_vm_metadata"
+
+[ios]
+package_name = "CrossKitShared"
+output = "dist/ios"
+targets = ["ios", "ios-sim", "ios-sim-x86_64"]
+build_mode = "release"
+lib_type = "static"
+format = "spm"
+swift_bridges = true

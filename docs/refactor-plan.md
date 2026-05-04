@@ -668,15 +668,21 @@ Review 重点：
 ```bash
 cargo fmt --all
 cargo test --workspace
-cargo llvm-cov --workspace --summary-only
-rm -rf examples/counter-list/dist
-cargo run -p cross-kit-cli -- ios package --config examples/counter-list/cross-kit.toml
-xcodebuild -project examples/counter-list/ios/CrossKitExample.xcodeproj \
-  -scheme CrossKitExample \
+cargo llvm-cov --workspace --exclude cross-kit-packager-ios --summary-only
+cargo test --manifest-path tools/ck-swift-packager/Cargo.toml
+rm -rf example/dist
+cargo run -p cross-kit-cli -- ios package --config example/cross-kit.toml
+xcodebuild -project example/ios/crosskit-example-ios.xcodeproj \
+  -scheme crosskit-example-ios \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' build
 git status --short
 ```
+
+Step 4 发生在 example 目录移动之前，因此验收路径仍使用当前 `example/`。`cross-kit-packager-ios`
+作为平台打包系统边界纳入 workspace 单测，但覆盖率门槛按核心 Rust 边界统计，使用
+`--exclude cross-kit-packager-ios`；该 crate 还必须通过 workspace tests 和 iOS package/xcodebuild
+端到端验证。
 
 验收标准：
 

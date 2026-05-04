@@ -5,6 +5,84 @@ use serde::{Deserialize, Serialize};
 /// Default Cross-Kit project configuration file name.
 pub const CONFIG_FILE_NAME: &str = "cross-kit.toml";
 
+/// Cross-Kit project configuration loaded from `cross-kit.toml`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CrossKitConfig {
+    pub shared: SharedConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ios: Option<IosConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub android: Option<AndroidConfig>,
+}
+
+impl CrossKitConfig {
+    pub fn from_toml_str(input: &str) -> Result<Self, toml::de::Error> {
+        toml::from_str(input)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedConfig {
+    pub crate_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lib_name: Option<String>,
+    #[serde(default = "default_metadata_bin")]
+    pub metadata_bin: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IosConfig {
+    pub package_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xcframework_name: Option<String>,
+    #[serde(default = "default_ios_targets")]
+    pub targets: Vec<String>,
+    #[serde(default = "default_release")]
+    pub build_mode: String,
+    #[serde(default = "default_static_lib")]
+    pub lib_type: String,
+    #[serde(default = "default_spm")]
+    pub format: String,
+    #[serde(default = "default_true")]
+    pub swift_bridges: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AndroidConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+}
+
+fn default_metadata_bin() -> String {
+    "ck_vm_metadata".to_string()
+}
+
+fn default_ios_targets() -> Vec<String> {
+    vec!["ios".to_string(), "ios-sim".to_string()]
+}
+
+fn default_release() -> String {
+    "release".to_string()
+}
+
+fn default_static_lib() -> String {
+    "static".to_string()
+}
+
+fn default_spm() -> String {
+    "spm".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
 /// Current VM metadata schema version emitted by Cross-Kit macros.
 pub const VM_METADATA_SCHEMA_VERSION: u32 = 1;
 
@@ -222,6 +300,63 @@ mod tests {
     #[test]
     fn config_file_name_matches_cli_contract() {
         assert_eq!(CONFIG_FILE_NAME, "cross-kit.toml");
+    }
+
+    #[test]
+    fn parses_cross_kit_toml_with_ios_package_config() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+            package = "shared"
+            lib_name = "cross_kit_shared"
+            metadata_bin = "ck_vm_metadata"
+
+            [ios]
+            package_name = "CrossKitShared"
+            output = "dist/ios"
+            targets = ["ios", "ios-sim", "ios-sim-x86_64"]
+            build_mode = "release"
+            lib_type = "static"
+            format = "spm"
+            swift_bridges = true
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(config.shared.crate_path, "shared");
+        assert_eq!(config.shared.package.as_deref(), Some("shared"));
+        assert_eq!(config.shared.lib_name.as_deref(), Some("cross_kit_shared"));
+        let ios = config.ios.unwrap();
+        assert_eq!(ios.package_name, "CrossKitShared");
+        assert_eq!(ios.output.as_deref(), Some("dist/ios"));
+        assert_eq!(
+            ios.targets,
+            ["ios", "ios-sim", "ios-sim-x86_64"].map(str::to_string)
+        );
+        assert!(ios.swift_bridges);
+    }
+
+    #[test]
+    fn applies_ios_config_defaults() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [ios]
+            package_name = "CrossKitShared"
+            "#,
+        )
+        .unwrap();
+
+        assert_eq!(config.shared.metadata_bin, "ck_vm_metadata");
+        let ios = config.ios.unwrap();
+        assert_eq!(ios.targets, ["ios", "ios-sim"].map(str::to_string));
+        assert_eq!(ios.build_mode, "release");
+        assert_eq!(ios.lib_type, "static");
+        assert_eq!(ios.format, "spm");
+        assert!(ios.swift_bridges);
     }
 
     #[test]
