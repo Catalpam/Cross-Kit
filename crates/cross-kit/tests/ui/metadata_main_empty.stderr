@@ -1,0 +1,7 @@
+error: metadata_main! requires at least one VM type
+ --> tests/ui/metadata_main_empty.rs:1:1
+  |
+1 | cross_kit::metadata_main!();
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the macro `cross_kit::metadata_main` (in Nightly builds, run with -Z macro-backtrace for more info)

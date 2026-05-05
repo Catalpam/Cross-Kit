@@ -1,0 +1,5 @@
+error[E0277]: the trait bound `MissingMetadataViewModel: CkVmMetadata` is not satisfied
+ --> tests/ui/metadata_main_missing_trait.rs:3:27
+  |
+3 | cross_kit::metadata_main!(MissingMetadataViewModel);
+  |                           ^^^^^^^^^^^^^^^^^^^^^^^^ the trait `CkVmMetadata` is not implemented for `MissingMetadataViewModel`

@@ -104,9 +104,30 @@ pub trait CkVmMetadata {
     fn ck_vm_metadata() -> &'static str;
 }
 
+/// Build the metadata JSON array emitted by SDK metadata binaries.
+pub fn metadata_json(metadata: &[&str]) -> String {
+    format!("[{}]", metadata.join(","))
+}
+
+/// Generate a metadata binary `main` function from an explicit VM list.
+#[macro_export]
+macro_rules! metadata_main {
+    () => {
+        compile_error!("metadata_main! requires at least one VM type");
+    };
+    ($($vm_ty:ty),+ $(,)?) => {
+        fn main() {
+            let metadata = [
+                $(<$vm_ty as $crate::CkVmMetadata>::ck_vm_metadata()),+
+            ];
+            println!("{}", $crate::metadata_json(&metadata));
+        }
+    };
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CkVmMetadata, ObserverSet};
+    use super::{CkVmMetadata, ObserverSet, metadata_json};
     use std::sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
@@ -125,6 +146,39 @@ mod tests {
         let metadata: serde_json::Value =
             serde_json::from_str(ManualMetadata::ck_vm_metadata()).unwrap();
         assert_eq!(metadata["name"], "manual");
+    }
+
+    #[test]
+    fn metadata_json_builds_valid_array_without_escaping_metadata() {
+        let metadata = metadata_json(&[r#"{"name":"first"}"#, r#"{"name":"second"}"#]);
+        let parsed: serde_json::Value = serde_json::from_str(&metadata).unwrap();
+        assert_eq!(parsed.as_array().unwrap().len(), 2);
+        assert_eq!(parsed[0]["name"], "first");
+        assert_eq!(parsed[1]["name"], "second");
+    }
+
+    mod generated_metadata_binary {
+        struct FirstViewModel;
+        struct SecondViewModel;
+
+        impl crate::CkVmMetadata for FirstViewModel {
+            fn ck_vm_metadata() -> &'static str {
+                r#"{"name":"FirstViewModel"}"#
+            }
+        }
+
+        impl crate::CkVmMetadata for SecondViewModel {
+            fn ck_vm_metadata() -> &'static str {
+                r#"{"name":"SecondViewModel"}"#
+            }
+        }
+
+        crate::metadata_main!(FirstViewModel, SecondViewModel);
+
+        #[test]
+        fn metadata_main_runs_without_extra_user_namespace_items() {
+            main();
+        }
     }
 
     #[test]
