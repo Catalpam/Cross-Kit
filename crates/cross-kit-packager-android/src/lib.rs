@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use camino::Utf8PathBuf;
-use cross_kit_core::VmMetadata;
+use cross_kit_core::{BindingsConfig, VmMetadata};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -18,6 +18,7 @@ pub struct AndroidPackageOptions {
     pub targets: Vec<String>,
     pub build_mode: String,
     pub metadata_bin: String,
+    pub bindings: Option<BindingsConfig>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +178,20 @@ fn write_kotlin_sources(
     replace_dir(&layout.kotlin_dir)?;
     for metadata in metadatas {
         let files = cross_kit_codegen::generate_kotlin_bridge(metadata, &options.package_name)?;
+        for file in files.files {
+            let path = layout.kotlin_dir.join(file.path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(path, file.contents)?;
+        }
+    }
+    if let Some(bindings) = &options.bindings {
+        let files = cross_kit_codegen::generate_kotlin_root_container(
+            metadatas,
+            bindings,
+            &options.package_name,
+        )?;
         for file in files.files {
             let path = layout.kotlin_dir.join(file.path);
             if let Some(parent) = path.parent() {
@@ -414,6 +429,12 @@ android {{
     kotlinOptions {{
         jvmTarget = "1.8"
     }}
+    buildFeatures {{
+        compose = true
+    }}
+    composeOptions {{
+        kotlinCompilerExtensionVersion = "1.5.1"
+    }}
 }}
 
 dependencies {{
@@ -518,6 +539,7 @@ mod tests {
             targets: vec!["arm64-v8a".to_string(), "x86_64".to_string()],
             build_mode: "release".to_string(),
             metadata_bin: "ck_vm_metadata".to_string(),
+            bindings: None,
         }
     }
 
@@ -609,6 +631,8 @@ mod tests {
         assert!(module.contains("id(\"maven-publish\")"));
         assert!(module.contains("group = \"com.crosskit\""));
         assert!(module.contains("publish"));
+        assert!(module.contains("compose = true"));
+        assert!(module.contains("kotlinCompilerExtensionVersion = \"1.5.1\""));
         assert!(module.contains("api(\"androidx.compose.runtime:runtime\")"));
         assert!(module.contains("net.java.dev.jna:jna:5.14.0"));
         assert!(manifest.contains("<manifest"));
@@ -660,6 +684,42 @@ mod tests {
             .join("com/crosskit/shared/CounterViewModelBridge.kt");
         assert!(bridge.exists());
         assert!(fs::read_to_string(bridge).unwrap().contains("vm.close()"));
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn writes_kotlin_root_container_when_bindings_are_configured() {
+        let mut options = options();
+        options.bindings = Some(cross_kit_core::BindingsConfig {
+            root_vm: "AppViewModel".to_string(),
+            container_name: "CrossKitSharedBridge".to_string(),
+        });
+        let temp = temp_path("kotlin-root-container");
+        let _ = fs::remove_dir_all(&temp);
+        options.output = temp.join("dist");
+        options.gradle_project = temp.join("dist/gradle-project");
+        let layout = package_layout(&options);
+
+        write_kotlin_sources(
+            &options,
+            &layout,
+            &[android_app_metadata(), android_counter_metadata()],
+        )
+        .unwrap();
+
+        let root_file = layout
+            .kotlin_dir
+            .join("com/crosskit/shared/CrossKitSharedBridge.kt");
+        let counter_file = layout
+            .kotlin_dir
+            .join("com/crosskit/shared/CounterViewModelBridge.kt");
+        let root_code = fs::read_to_string(root_file).unwrap();
+        assert!(counter_file.exists());
+        assert!(root_code.contains("class CrossKitSharedBridge(initial: Int) : AutoCloseable"));
+        assert!(root_code.contains("val app: AppViewModelBridge = AppViewModelBridge(initial)"));
+        assert!(root_code.contains("val counter: CounterViewModelBridge = app.makeCounterVm()"));
+        assert!(root_code.contains("fun rememberCrossKitSharedBridge(initial: Int)"));
+        assert!(root_code.contains("onDispose { kit.close() }"));
         let _ = fs::remove_dir_all(&temp);
     }
 
@@ -830,6 +890,7 @@ mod tests {
             targets: vec!["arm64-v8a".to_string(), "x86_64".to_string()],
             build_mode: "release".to_string(),
             metadata_bin: "ck_vm_metadata".to_string(),
+            bindings: None,
         };
 
         let report = package_android(&options).unwrap();
@@ -860,5 +921,60 @@ mod tests {
                 .exists()
         );
         let _ = fs::remove_dir_all(&temp);
+    }
+
+    fn android_app_metadata() -> VmMetadata {
+        serde_json::from_value(serde_json::json!({
+            "schema_version": cross_kit_core::VM_METADATA_SCHEMA_VERSION,
+            "rust_type": "AppViewModel",
+            "bridge_name": "AppViewModelBridge",
+            "mode": "state",
+            "observer": {"rust_type": "AppObserver", "method": "on_state"},
+            "state_type": "AppState",
+            "methods": [
+                {
+                    "name": "subscribe",
+                    "args": [{"name": "observer", "rust_type": "Arc<dyn AppObserver>"}],
+                    "return_type": "i64"
+                },
+                {"name": "get_state", "args": [], "return_type": "AppState"},
+                {
+                    "name": "new",
+                    "args": [{"name": "initial", "rust_type": "i32"}],
+                    "return_type": "Arc<Self>"
+                },
+                {
+                    "name": "make_counter_vm",
+                    "args": [],
+                    "return_type": "Arc<CounterViewModel>"
+                }
+            ]
+        }))
+        .unwrap()
+    }
+
+    fn android_counter_metadata() -> VmMetadata {
+        serde_json::from_value(serde_json::json!({
+            "schema_version": cross_kit_core::VM_METADATA_SCHEMA_VERSION,
+            "rust_type": "CounterViewModel",
+            "bridge_name": "CounterViewModelBridge",
+            "mode": "state",
+            "observer": {"rust_type": "CounterObserver", "method": "on_state"},
+            "state_type": "CounterState",
+            "factory": {
+                "rust_type": "AppViewModel",
+                "method": "make_counter_vm",
+                "bridge_name": "AppViewModelBridge"
+            },
+            "methods": [
+                {
+                    "name": "subscribe",
+                    "args": [{"name": "observer", "rust_type": "Arc<dyn CounterObserver>"}],
+                    "return_type": "i64"
+                },
+                {"name": "get_state", "args": [], "return_type": "CounterState"}
+            ]
+        }))
+        .unwrap()
     }
 }

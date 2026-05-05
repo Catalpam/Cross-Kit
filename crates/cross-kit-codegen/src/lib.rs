@@ -1,6 +1,6 @@
 //! Target code generators for Cross-Kit metadata.
 
-use cross_kit_core::{MetadataValidationError, MethodMetadata, VmMetadata, VmMode};
+use cross_kit_core::{BindingsConfig, MetadataValidationError, MethodMetadata, VmMetadata, VmMode};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneratedFile {
@@ -16,6 +16,7 @@ pub struct GeneratedFileSet {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenError {
     InvalidMetadata(MetadataValidationError),
+    InvalidRootGraph(String),
     UnsupportedMode(VmMode),
 }
 
@@ -23,6 +24,7 @@ impl std::fmt::Display for CodegenError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidMetadata(err) => write!(f, "{err}"),
+            Self::InvalidRootGraph(err) => write!(f, "{err}"),
             Self::UnsupportedMode(mode) => write!(f, "unsupported bridge mode: {mode:?}"),
         }
     }
@@ -82,6 +84,335 @@ pub fn generate_kotlin_bridge_source(
         VmMode::DiffList => Ok(generate_kotlin_list_bridge(metadata, package_name)),
         VmMode::Event | VmMode::Unknown => Err(CodegenError::UnsupportedMode(metadata.mode)),
     }
+}
+
+pub fn generate_swift_root_container(
+    metadatas: &[VmMetadata],
+    bindings: &BindingsConfig,
+) -> Result<GeneratedFileSet, CodegenError> {
+    let graph = RootGraph::build(metadatas, bindings)?;
+    let contents = generate_swift_root_container_source(&graph);
+    Ok(GeneratedFileSet {
+        files: vec![GeneratedFile {
+            path: format!("{}.swift", graph.container_name),
+            contents,
+        }],
+    })
+}
+
+pub fn generate_kotlin_root_container(
+    metadatas: &[VmMetadata],
+    bindings: &BindingsConfig,
+    package_name: &str,
+) -> Result<GeneratedFileSet, CodegenError> {
+    let graph = RootGraph::build(metadatas, bindings)?;
+    let contents = generate_kotlin_root_container_source(&graph, package_name);
+    Ok(GeneratedFileSet {
+        files: vec![GeneratedFile {
+            path: format!(
+                "{}/{}.kt",
+                package_name.replace('.', "/"),
+                graph.container_name
+            ),
+            contents,
+        }],
+    })
+}
+
+struct RootGraph<'a> {
+    container_name: String,
+    root: &'a VmMetadata,
+    children: Vec<&'a VmMetadata>,
+}
+
+impl<'a> RootGraph<'a> {
+    fn build(
+        metadatas: &'a [VmMetadata],
+        bindings: &BindingsConfig,
+    ) -> Result<RootGraph<'a>, CodegenError> {
+        if bindings.root_vm.trim().is_empty() {
+            return Err(CodegenError::InvalidRootGraph(
+                "[bindings].root_vm must not be empty".to_string(),
+            ));
+        }
+        if bindings.container_name.trim().is_empty() {
+            return Err(CodegenError::InvalidRootGraph(
+                "[bindings].container_name must not be empty".to_string(),
+            ));
+        }
+        validate_cross_platform_identifier("[bindings].container_name", &bindings.container_name)?;
+        if metadatas.is_empty() {
+            return Err(CodegenError::InvalidRootGraph(
+                "root graph requires at least one VM metadata entry".to_string(),
+            ));
+        }
+        for metadata in metadatas {
+            validate_swift_bridge_metadata(metadata)?;
+        }
+
+        let matching_roots = metadatas
+            .iter()
+            .filter(|metadata| metadata.rust_type == bindings.root_vm)
+            .collect::<Vec<_>>();
+        let root = match matching_roots.as_slice() {
+            [root] => *root,
+            [] => {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "root VM '{}' was not found in metadata",
+                    bindings.root_vm
+                )));
+            }
+            _ => {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "root VM '{}' is ambiguous in metadata",
+                    bindings.root_vm
+                )));
+            }
+        };
+        if root.factory.is_some() {
+            return Err(CodegenError::InvalidRootGraph(format!(
+                "root VM '{}' must not be created by a factory",
+                root.rust_type
+            )));
+        }
+
+        let mut bridge_names = std::collections::BTreeSet::new();
+        let mut property_names = std::collections::BTreeMap::new();
+        for metadata in metadatas {
+            if !bridge_names.insert(metadata.bridge_name.as_str()) {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "bridge name '{}' is used by more than one VM",
+                    metadata.bridge_name
+                )));
+            }
+            if bindings.container_name == metadata.bridge_name {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "[bindings].container_name '{}' conflicts with generated bridge '{}'",
+                    bindings.container_name, metadata.bridge_name
+                )));
+            }
+            for generated_name in generated_platform_type_names(metadata) {
+                if bindings.container_name == generated_name {
+                    return Err(CodegenError::InvalidRootGraph(format!(
+                        "[bindings].container_name '{}' conflicts with generated type '{}' from VM '{}'",
+                        bindings.container_name, generated_name, metadata.rust_type
+                    )));
+                }
+            }
+            let property = property_name(&metadata.rust_type);
+            validate_cross_platform_identifier(
+                &format!("root container property for VM '{}'", metadata.rust_type),
+                &property,
+            )?;
+            if is_reserved_root_container_property(&property) {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "root container property '{}' for VM '{}' is reserved by generated code",
+                    property, metadata.rust_type
+                )));
+            }
+            if let Some(previous) =
+                property_names.insert(property.clone(), metadata.rust_type.as_str())
+            {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "VM '{}' and VM '{}' both generate root container property '{}'",
+                    previous, metadata.rust_type, property
+                )));
+            }
+        }
+
+        let mut children = Vec::new();
+        for metadata in metadatas {
+            if std::ptr::eq(metadata, root) {
+                continue;
+            }
+            let Some(factory) = &metadata.factory else {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "non-root VM '{}' must be created by root VM '{}'",
+                    metadata.rust_type, root.rust_type
+                )));
+            };
+            if factory.rust_type != root.rust_type {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "child VM '{}' factory points to '{}', expected root VM '{}'",
+                    metadata.rust_type, factory.rust_type, root.rust_type
+                )));
+            }
+            if factory.bridge_name != root.bridge_name {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "child VM '{}' factory bridge '{}' does not match root bridge '{}'",
+                    metadata.rust_type, factory.bridge_name, root.bridge_name
+                )));
+            }
+            let method = root
+                .methods
+                .iter()
+                .find(|method| method.name == factory.method)
+                .ok_or_else(|| {
+                    CodegenError::InvalidRootGraph(format!(
+                        "root VM '{}' is missing child factory method '{}'",
+                        root.rust_type, factory.method
+                    ))
+                })?;
+            if !method.args.is_empty() {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "child factory method '{}.{}' must not accept arguments",
+                    root.rust_type, factory.method
+                )));
+            }
+            if owned_arc_return_type(&method.return_type) != Some(metadata.rust_type.as_str()) {
+                return Err(CodegenError::InvalidRootGraph(format!(
+                    "child factory method '{}.{}' must return Arc<{}>",
+                    root.rust_type, factory.method, metadata.rust_type
+                )));
+            }
+            children.push(metadata);
+        }
+
+        Ok(RootGraph {
+            container_name: bindings.container_name.clone(),
+            root,
+            children,
+        })
+    }
+}
+
+fn generate_swift_root_container_source(graph: &RootGraph<'_>) -> String {
+    let root_property = property_name(&graph.root.rust_type);
+    let (ctor_sig, ctor_call) = root_constructor_for_container(graph.root);
+
+    let child_decls = graph
+        .children
+        .iter()
+        .map(|child| {
+            format!(
+                "    public let {}: {}",
+                property_name(&child.rust_type),
+                child.bridge_name
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let child_inits = graph
+        .children
+        .iter()
+        .map(|child| {
+            format!(
+                "        self.{property} = {bridge}(app: {root_property})",
+                property = property_name(&child.rust_type),
+                bridge = child.bridge_name,
+                root_property = root_property
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let forwards = std::iter::once(graph.root)
+        .chain(graph.children.iter().copied())
+        .map(|metadata| {
+            format!(
+                "        {property}.objectWillChange.sink {{ [weak self] _ in self?.objectWillChange.send() }}.store(in: &cancellables)",
+                property = property_name(&metadata.rust_type)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"// Generated by cross-kit-codegen.
+import Combine
+import Foundation
+
+@MainActor
+public final class {container}: ObservableObject {{
+    public let {root_property}: {root_bridge}
+{child_decls}
+    private var cancellables: Set<AnyCancellable> = []
+
+    {ctor_sig} {{
+        let {root_property} = {root_ctor}
+        self.{root_property} = {root_property}
+{child_inits}
+{forwards}
+    }}
+}}
+"#,
+        container = graph.container_name,
+        root_property = root_property,
+        root_bridge = graph.root.bridge_name,
+        child_decls = indent_optional(&child_decls, 0),
+        ctor_sig = ctor_sig,
+        root_ctor = ctor_call,
+        child_inits = indent_optional(&child_inits, 0),
+        forwards = forwards,
+    )
+}
+
+fn generate_kotlin_root_container_source(graph: &RootGraph<'_>, package_name: &str) -> String {
+    let root_property = property_name(&graph.root.rust_type);
+    let (ctor_sig, ctor_call) = root_kotlin_constructor_for_container(graph.root);
+    let child_decls = graph
+        .children
+        .iter()
+        .map(|child| {
+            format!(
+                "    val {}: {} = {}.{}()",
+                property_name(&child.rust_type),
+                child.bridge_name,
+                root_property,
+                to_kotlin_method_name(&child.factory.as_ref().unwrap().method)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let child_closes = graph
+        .children
+        .iter()
+        .rev()
+        .map(|child| format!("        {}.close()", property_name(&child.rust_type)))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"// Generated by cross-kit-codegen.
+package {package_name}
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
+
+class {container}{ctor_sig} : AutoCloseable {{
+    val {root_property}: {root_bridge} = {root_ctor}
+{child_decls}
+    private var closed = false
+
+    override fun close() {{
+        if (closed) return
+        closed = true
+{child_closes}
+        {root_property}.close()
+    }}
+}}
+
+@Composable
+fun remember{container}({remember_args}): {container} {{
+    val kit = remember({remember_keys}) {{ {container}({remember_call_args}) }}
+    DisposableEffect(kit) {{
+        onDispose {{ kit.close() }}
+    }}
+    return kit
+}}
+"#,
+        package_name = package_name,
+        container = graph.container_name,
+        ctor_sig = ctor_sig,
+        root_property = root_property,
+        root_bridge = graph.root.bridge_name,
+        root_ctor = ctor_call,
+        child_decls = indent_optional(&child_decls, 0),
+        child_closes = indent_optional(&child_closes, 0),
+        remember_args = root_kotlin_constructor_args(graph.root),
+        remember_keys = root_kotlin_remember_keys(graph.root),
+        remember_call_args = root_kotlin_constructor_call_args(graph.root),
+    )
 }
 
 fn validate_swift_bridge_metadata(metadata: &VmMetadata) -> Result<(), CodegenError> {
@@ -755,6 +1086,68 @@ fn format_kotlin_ctor_call(method: &MethodMetadata, vm_type: &str) -> String {
     format!("{}({})", vm_type, args)
 }
 
+fn root_constructor_for_container(metadata: &VmMetadata) -> (String, String) {
+    if let Some(ctor) = constructor_method(metadata) {
+        return (
+            format_swift_signature(ctor, true),
+            format_swift_ctor_call(ctor, &metadata.bridge_name),
+        );
+    }
+    (
+        "public init()".to_string(),
+        format!("{}()", metadata.bridge_name),
+    )
+}
+
+fn root_kotlin_constructor_for_container(metadata: &VmMetadata) -> (String, String) {
+    if let Some(ctor) = constructor_method(metadata) {
+        return (
+            format_kotlin_constructor_signature(ctor),
+            format_kotlin_ctor_call(ctor, &metadata.bridge_name),
+        );
+    }
+    ("()".to_string(), format!("{}()", metadata.bridge_name))
+}
+
+fn root_kotlin_constructor_args(metadata: &VmMetadata) -> String {
+    constructor_method(metadata)
+        .map(|ctor| {
+            ctor.args
+                .iter()
+                .map(|arg| {
+                    format!(
+                        "{}: {}",
+                        to_kotlin_method_name(&arg.name),
+                        map_type_to_kotlin(&arg.rust_type)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default()
+}
+
+fn root_kotlin_constructor_call_args(metadata: &VmMetadata) -> String {
+    constructor_method(metadata)
+        .map(|ctor| {
+            ctor.args
+                .iter()
+                .map(|arg| to_kotlin_method_name(&arg.name))
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default()
+}
+
+fn root_kotlin_remember_keys(metadata: &VmMetadata) -> String {
+    let args = root_kotlin_constructor_call_args(metadata);
+    if args.is_empty() {
+        "Unit".to_string()
+    } else {
+        args
+    }
+}
+
 fn format_kotlin_method(method: &MethodMetadata) -> String {
     let kotlin_name = to_kotlin_method_name(&method.name);
     let args = method
@@ -812,6 +1205,175 @@ fn owned_arc_return_type(ty: &str) -> Option<&str> {
 
 fn kotlin_bridge_name_for_rust_type(rust_type: &str) -> String {
     format!("{rust_type}Bridge")
+}
+
+fn property_name(rust_type: &str) -> String {
+    let mut base = rust_type
+        .strip_suffix("ViewModel")
+        .unwrap_or(rust_type)
+        .to_string();
+    if base.is_empty() {
+        base = rust_type.to_string();
+    }
+    let mut chars = base.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    format!("{}{}", first.to_ascii_lowercase(), chars.as_str())
+}
+
+fn validate_cross_platform_identifier(kind: &str, value: &str) -> Result<(), CodegenError> {
+    if !is_ascii_identifier(value) || is_swift_or_kotlin_keyword(value) {
+        return Err(CodegenError::InvalidRootGraph(format!(
+            "{kind} must be a valid Swift/Kotlin identifier, got '{value}'"
+        )));
+    }
+    Ok(())
+}
+
+fn is_reserved_root_container_property(value: &str) -> bool {
+    matches!(
+        value,
+        "cancellables" | "closed" | "close" | "objectWillChange"
+    )
+}
+
+fn generated_platform_type_names(metadata: &VmMetadata) -> Vec<String> {
+    let mut names = vec![
+        metadata.rust_type.clone(),
+        metadata.bridge_name.clone(),
+        format!("{}Protocol", metadata.rust_type),
+    ];
+    if let Some(observer) = &metadata.observer {
+        names.push(observer.rust_type.clone());
+        names.push(format!("{}Protocol", observer.rust_type));
+    }
+    for ty in [
+        metadata.state_type.as_ref(),
+        metadata.diff_type.as_ref(),
+        metadata.list_item_type.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        names.push(ty.clone());
+    }
+    names
+}
+
+fn is_ascii_identifier(value: &str) -> bool {
+    if value == "_" {
+        return false;
+    }
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if !(first == '_' || first.is_ascii_alphabetic()) {
+        return false;
+    }
+    chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+}
+
+fn is_swift_or_kotlin_keyword(value: &str) -> bool {
+    matches!(
+        value,
+        "Any"
+            | "Self"
+            | "actor"
+            | "actual"
+            | "abstract"
+            | "annotation"
+            | "as"
+            | "associatedtype"
+            | "async"
+            | "await"
+            | "break"
+            | "by"
+            | "case"
+            | "catch"
+            | "class"
+            | "companion"
+            | "const"
+            | "constructor"
+            | "continue"
+            | "convenience"
+            | "data"
+            | "default"
+            | "defer"
+            | "deinit"
+            | "do"
+            | "dynamic"
+            | "else"
+            | "enum"
+            | "expect"
+            | "extension"
+            | "external"
+            | "fallthrough"
+            | "false"
+            | "fileprivate"
+            | "final"
+            | "finally"
+            | "for"
+            | "fun"
+            | "func"
+            | "if"
+            | "import"
+            | "in"
+            | "indirect"
+            | "infix"
+            | "init"
+            | "inner"
+            | "inout"
+            | "interface"
+            | "internal"
+            | "is"
+            | "lateinit"
+            | "let"
+            | "mutating"
+            | "nil"
+            | "noinline"
+            | "nonmutating"
+            | "null"
+            | "object"
+            | "open"
+            | "operator"
+            | "out"
+            | "override"
+            | "package"
+            | "precedencegroup"
+            | "private"
+            | "protected"
+            | "protocol"
+            | "public"
+            | "reified"
+            | "required"
+            | "return"
+            | "rethrows"
+            | "sealed"
+            | "self"
+            | "static"
+            | "struct"
+            | "subscript"
+            | "super"
+            | "suspend"
+            | "switch"
+            | "this"
+            | "throw"
+            | "throws"
+            | "true"
+            | "try"
+            | "typealias"
+            | "typeof"
+            | "unowned"
+            | "val"
+            | "var"
+            | "vararg"
+            | "weak"
+            | "when"
+            | "where"
+            | "while"
+    )
 }
 
 fn map_type_to_kotlin(ty: &str) -> String {
@@ -949,7 +1511,8 @@ fn indent_optional(input: &str, spaces: usize) -> String {
 mod tests {
     use super::*;
     use cross_kit_core::{
-        ArgMetadata, FactoryMetadata, MethodMetadata, ObserverMetadata, VM_METADATA_SCHEMA_VERSION,
+        ArgMetadata, BindingsConfig, FactoryMetadata, MethodMetadata, ObserverMetadata,
+        VM_METADATA_SCHEMA_VERSION,
     };
 
     fn state_metadata() -> VmMetadata {
@@ -1041,6 +1604,58 @@ mod tests {
                     return_type: "bool".to_string(),
                 },
             ],
+        }
+    }
+
+    fn app_metadata() -> VmMetadata {
+        let mut metadata = state_metadata();
+        metadata.rust_type = "AppViewModel".to_string();
+        metadata.bridge_name = "AppViewModelBridge".to_string();
+        metadata.factory = None;
+        metadata.observer.as_mut().unwrap().rust_type = "AppObserver".to_string();
+        metadata.methods[0].args[0].rust_type = "Arc<dyn AppObserver>".to_string();
+        metadata.state_type = Some("AppState".to_string());
+        metadata.methods[2].return_type = "AppState".to_string();
+        metadata.methods.push(MethodMetadata {
+            name: "new".to_string(),
+            args: vec![ArgMetadata {
+                name: "initial".to_string(),
+                rust_type: "i32".to_string(),
+            }],
+            return_type: "Arc<Self>".to_string(),
+        });
+        metadata.methods.push(MethodMetadata {
+            name: "clear_route".to_string(),
+            args: Vec::new(),
+            return_type: "unit".to_string(),
+        });
+        metadata.methods.push(MethodMetadata {
+            name: "make_counter_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<CounterViewModel>".to_string(),
+        });
+        metadata.methods.push(MethodMetadata {
+            name: "make_list_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<ListViewModel>".to_string(),
+        });
+        metadata
+    }
+
+    fn child_list_metadata() -> VmMetadata {
+        let mut metadata = list_metadata();
+        metadata.factory = Some(FactoryMetadata {
+            rust_type: "AppViewModel".to_string(),
+            method: "make_list_vm".to_string(),
+            bridge_name: "AppViewModelBridge".to_string(),
+        });
+        metadata
+    }
+
+    fn bindings() -> BindingsConfig {
+        BindingsConfig {
+            root_vm: "AppViewModel".to_string(),
+            container_name: "CrossKitSharedBridge".to_string(),
         }
     }
 
@@ -1186,6 +1801,345 @@ mod tests {
         assert!(code.contains("private fun clampIndex(index: Long, upperBound: Int): Int"));
         assert!(code.contains("handler.post { applyDiffsToItems(diffs) }"));
         assert!(code.contains("vm.close()"));
+    }
+
+    #[test]
+    fn generates_swift_root_container_with_forwarding_and_stable_children() {
+        let files = generate_swift_root_container(
+            &[app_metadata(), state_metadata(), child_list_metadata()],
+            &bindings(),
+        )
+        .unwrap();
+        let code = &files.files[0].contents;
+
+        assert_eq!(files.files[0].path, "CrossKitSharedBridge.swift");
+        assert!(code.contains("import Combine"));
+        assert!(code.contains("@MainActor"));
+        assert!(code.contains("public final class CrossKitSharedBridge: ObservableObject"));
+        assert!(code.contains("public let app: AppViewModelBridge"));
+        assert!(code.contains("public let counter: CounterViewModelBridge"));
+        assert!(code.contains("public let list: ListViewModelBridge"));
+        assert!(code.contains("private var cancellables: Set<AnyCancellable> = []"));
+        assert!(code.contains("public init(initial: Int32)"));
+        assert!(code.contains("let app = AppViewModelBridge(initial: initial)"));
+        assert!(code.contains("self.counter = CounterViewModelBridge(app: app)"));
+        assert!(code.contains("self.list = ListViewModelBridge(app: app)"));
+        assert!(
+            code.find("self.counter = CounterViewModelBridge(app: app)")
+                .unwrap()
+                < code
+                    .find("self.list = ListViewModelBridge(app: app)")
+                    .unwrap()
+        );
+        assert!(code.contains(
+            "app.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }"
+        ));
+        assert!(code.contains(
+            "counter.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }"
+        ));
+        assert!(code.contains(
+            "list.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }"
+        ));
+    }
+
+    #[test]
+    fn generates_kotlin_root_container_with_remember_helper_and_idempotent_close() {
+        let files = generate_kotlin_root_container(
+            &[app_metadata(), state_metadata(), child_list_metadata()],
+            &bindings(),
+            "com.crosskit.shared",
+        )
+        .unwrap();
+        let code = &files.files[0].contents;
+
+        assert_eq!(
+            files.files[0].path,
+            "com/crosskit/shared/CrossKitSharedBridge.kt"
+        );
+        assert!(code.contains("package com.crosskit.shared"));
+        assert!(code.contains("class CrossKitSharedBridge(initial: Int) : AutoCloseable"));
+        assert!(code.contains("val app: AppViewModelBridge = AppViewModelBridge(initial)"));
+        assert!(code.contains("val counter: CounterViewModelBridge = app.makeCounterVm()"));
+        assert!(code.contains("val list: ListViewModelBridge = app.makeListVm()"));
+        assert!(code.contains("private var closed = false"));
+        assert!(code.contains("if (closed) return"));
+        assert!(code.find("list.close()").unwrap() < code.find("counter.close()").unwrap());
+        assert!(code.find("counter.close()").unwrap() < code.find("app.close()").unwrap());
+        assert!(code.contains("@Composable"));
+        assert!(
+            code.contains("fun rememberCrossKitSharedBridge(initial: Int): CrossKitSharedBridge")
+        );
+        assert!(code.contains("val kit = remember(initial) { CrossKitSharedBridge(initial) }"));
+        assert!(code.contains("DisposableEffect(kit)"));
+        assert!(code.contains("onDispose { kit.close() }"));
+    }
+
+    #[test]
+    fn generates_root_container_without_children() {
+        let swift = generate_swift_root_container(&[app_metadata()], &bindings())
+            .unwrap()
+            .files
+            .remove(0)
+            .contents;
+        let kotlin =
+            generate_kotlin_root_container(&[app_metadata()], &bindings(), "com.crosskit.shared")
+                .unwrap()
+                .files
+                .remove(0)
+                .contents;
+
+        assert!(swift.contains("public let app: AppViewModelBridge"));
+        assert!(!swift.contains("public let counter"));
+        assert!(!kotlin.contains("counter.close()"));
+        assert!(kotlin.contains("app.close()"));
+    }
+
+    #[test]
+    fn rejects_invalid_root_graph_contracts() {
+        let err = generate_swift_root_container(&[state_metadata()], &bindings()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("root VM 'AppViewModel' was not found")
+        );
+
+        let mut root_with_factory = app_metadata();
+        root_with_factory.factory = Some(FactoryMetadata {
+            rust_type: "OtherRoot".to_string(),
+            method: "make_app_vm".to_string(),
+            bridge_name: "OtherRootBridge".to_string(),
+        });
+        let err = generate_swift_root_container(&[root_with_factory], &bindings()).unwrap_err();
+        assert!(err.to_string().contains("must not be created by a factory"));
+
+        let mut wrong_parent = state_metadata();
+        wrong_parent.factory.as_mut().unwrap().rust_type = "OtherRoot".to_string();
+        let err =
+            generate_kotlin_root_container(&[app_metadata(), wrong_parent], &bindings(), "pkg")
+                .unwrap_err();
+        assert!(err.to_string().contains("factory points to 'OtherRoot'"));
+
+        let mut wrong_factory_bridge = state_metadata();
+        wrong_factory_bridge.factory.as_mut().unwrap().bridge_name = "OtherRootBridge".to_string();
+        let err =
+            generate_swift_root_container(&[app_metadata(), wrong_factory_bridge], &bindings())
+                .unwrap_err();
+        assert!(err.to_string().contains("does not match root bridge"));
+
+        let mut missing_method = state_metadata();
+        missing_method.factory.as_mut().unwrap().method = "make_missing_vm".to_string();
+        let err = generate_swift_root_container(&[app_metadata(), missing_method], &bindings())
+            .unwrap_err();
+        assert!(err.to_string().contains("missing child factory method"));
+
+        let mut arg_factory_root = app_metadata();
+        arg_factory_root
+            .methods
+            .iter_mut()
+            .find(|method| method.name == "make_counter_vm")
+            .unwrap()
+            .args
+            .push(ArgMetadata {
+                name: "id".to_string(),
+                rust_type: "i64".to_string(),
+            });
+        let err = generate_swift_root_container(&[arg_factory_root, state_metadata()], &bindings())
+            .unwrap_err();
+        assert!(err.to_string().contains("must not accept arguments"));
+
+        let mut wrong_return_root = app_metadata();
+        wrong_return_root
+            .methods
+            .iter_mut()
+            .find(|method| method.name == "make_counter_vm")
+            .unwrap()
+            .return_type = "Arc<WrongViewModel>".to_string();
+        let err =
+            generate_swift_root_container(&[wrong_return_root, state_metadata()], &bindings())
+                .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("must return Arc<CounterViewModel>")
+        );
+
+        let mut duplicate_bridge = child_list_metadata();
+        duplicate_bridge.bridge_name = "CounterViewModelBridge".to_string();
+        let err = generate_swift_root_container(
+            &[app_metadata(), state_metadata(), duplicate_bridge],
+            &bindings(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("used by more than one VM"));
+
+        for bad_container in ["123Bridge", "Cross-Kit", "class", "Self", "_"] {
+            let mut bindings = bindings();
+            bindings.container_name = bad_container.to_string();
+            let err = generate_swift_root_container(&[app_metadata()], &bindings).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("[bindings].container_name must be a valid Swift/Kotlin identifier")
+            );
+        }
+
+        let mut conflicting_bindings = bindings();
+        conflicting_bindings.container_name = "AppViewModelBridge".to_string();
+        let err =
+            generate_swift_root_container(&[app_metadata()], &conflicting_bindings).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("conflicts with generated bridge 'AppViewModelBridge'")
+        );
+
+        for generated_type in [
+            "AppViewModel",
+            "AppState",
+            "AppObserver",
+            "AppViewModelProtocol",
+        ] {
+            let mut bindings = bindings();
+            bindings.container_name = generated_type.to_string();
+            let err = generate_swift_root_container(&[app_metadata()], &bindings).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains(&format!("conflicts with generated type '{generated_type}'"))
+            );
+        }
+
+        let mut keyword_property = state_metadata();
+        keyword_property.rust_type = "ClassViewModel".to_string();
+        keyword_property.bridge_name = "ClassViewModelBridge".to_string();
+        keyword_property.factory.as_mut().unwrap().method = "make_class_vm".to_string();
+        let mut keyword_root = app_metadata();
+        keyword_root.methods.push(MethodMetadata {
+            name: "make_class_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<ClassViewModel>".to_string(),
+        });
+        let err = generate_swift_root_container(&[keyword_root, keyword_property], &bindings())
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("root container property for VM 'ClassViewModel'")
+        );
+
+        let mut swift_keyword_root = app_metadata();
+        swift_keyword_root.methods.push(MethodMetadata {
+            name: "make_inout_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<InoutViewModel>".to_string(),
+        });
+        swift_keyword_root.methods.push(MethodMetadata {
+            name: "make_precedencegroup_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<PrecedencegroupViewModel>".to_string(),
+        });
+        for (rust_type, bridge_name, factory_method) in [
+            ("InoutViewModel", "InoutViewModelBridge", "make_inout_vm"),
+            (
+                "PrecedencegroupViewModel",
+                "PrecedencegroupViewModelBridge",
+                "make_precedencegroup_vm",
+            ),
+        ] {
+            let mut keyword_child = state_metadata();
+            keyword_child.rust_type = rust_type.to_string();
+            keyword_child.bridge_name = bridge_name.to_string();
+            keyword_child.factory.as_mut().unwrap().method = factory_method.to_string();
+            let err = generate_swift_root_container(
+                &[swift_keyword_root.clone(), keyword_child],
+                &bindings(),
+            )
+            .unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains(&format!("root container property for VM '{rust_type}'"))
+            );
+        }
+
+        let mut collision_root = app_metadata();
+        collision_root.methods.push(MethodMetadata {
+            name: "make_foo_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<FooViewModel>".to_string(),
+        });
+        collision_root.methods.push(MethodMetadata {
+            name: "make_foo".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<Foo>".to_string(),
+        });
+        let mut foo_vm = state_metadata();
+        foo_vm.rust_type = "FooViewModel".to_string();
+        foo_vm.bridge_name = "FooViewModelBridge".to_string();
+        foo_vm.factory.as_mut().unwrap().method = "make_foo_vm".to_string();
+        let mut foo = state_metadata();
+        foo.rust_type = "Foo".to_string();
+        foo.bridge_name = "FooBridge".to_string();
+        foo.factory.as_mut().unwrap().method = "make_foo".to_string();
+        let err =
+            generate_swift_root_container(&[collision_root, foo_vm, foo], &bindings()).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("both generate root container property 'foo'")
+        );
+
+        let mut reserved_root = app_metadata();
+        reserved_root.methods.push(MethodMetadata {
+            name: "make_cancellables_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<CancellablesViewModel>".to_string(),
+        });
+        reserved_root.methods.push(MethodMetadata {
+            name: "make_closed_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<ClosedViewModel>".to_string(),
+        });
+        reserved_root.methods.push(MethodMetadata {
+            name: "make_close_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<CloseViewModel>".to_string(),
+        });
+        reserved_root.methods.push(MethodMetadata {
+            name: "make_object_will_change_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<ObjectWillChangeViewModel>".to_string(),
+        });
+        for (rust_type, bridge_name, factory_method, property) in [
+            (
+                "CancellablesViewModel",
+                "CancellablesViewModelBridge",
+                "make_cancellables_vm",
+                "cancellables",
+            ),
+            (
+                "ClosedViewModel",
+                "ClosedViewModelBridge",
+                "make_closed_vm",
+                "closed",
+            ),
+            (
+                "CloseViewModel",
+                "CloseViewModelBridge",
+                "make_close_vm",
+                "close",
+            ),
+            (
+                "ObjectWillChangeViewModel",
+                "ObjectWillChangeViewModelBridge",
+                "make_object_will_change_vm",
+                "objectWillChange",
+            ),
+        ] {
+            let mut reserved_child = state_metadata();
+            reserved_child.rust_type = rust_type.to_string();
+            reserved_child.bridge_name = bridge_name.to_string();
+            reserved_child.factory.as_mut().unwrap().method = factory_method.to_string();
+            let err = generate_swift_root_container(
+                &[reserved_root.clone(), reserved_child],
+                &bindings(),
+            )
+            .unwrap_err();
+            assert!(err.to_string().contains(&format!("property '{property}'")));
+            assert!(err.to_string().contains("is reserved by generated code"));
+        }
     }
 
     #[test]

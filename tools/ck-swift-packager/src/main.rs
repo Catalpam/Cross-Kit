@@ -97,6 +97,7 @@ fn main() -> Result<()> {
         },
         swift_bridges: args.swift_bridges,
         metadata_bin: "ck_vm_metadata".to_string(),
+        bindings: None,
     })?;
     Ok(())
 }

@@ -582,7 +582,7 @@ class CrossKitSharedBridge(initial: Int) : AutoCloseable {
 }
 
 @Composable
-fun rememberCrossKitShared(initial: Int): CrossKitSharedBridge {
+fun rememberCrossKitSharedBridge(initial: Int): CrossKitSharedBridge {
     val kit = remember(initial) { CrossKitSharedBridge(initial) }
     DisposableEffect(kit) {
         onDispose { kit.close() }
@@ -594,7 +594,7 @@ fun rememberCrossKitShared(initial: Int): CrossKitSharedBridge {
 example 改为：
 
 ```kotlin
-val kit = rememberCrossKitShared(initial = 0)
+val kit = rememberCrossKitSharedBridge(initial = 0)
 ```
 
 ### 8.4 具体改动

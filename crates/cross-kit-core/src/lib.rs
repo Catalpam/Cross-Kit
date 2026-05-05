@@ -10,6 +10,8 @@ pub const CONFIG_FILE_NAME: &str = "cross-kit.toml";
 pub struct CrossKitConfig {
     pub shared: SharedConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bindings: Option<BindingsConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ios: Option<IosConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub android: Option<AndroidConfig>,
@@ -30,6 +32,12 @@ pub struct SharedConfig {
     pub lib_name: Option<String>,
     #[serde(default = "default_metadata_bin")]
     pub metadata_bin: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BindingsConfig {
+    pub root_vm: String,
+    pub container_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -332,6 +340,10 @@ mod tests {
             lib_name = "cross_kit_shared"
             metadata_bin = "ck_vm_metadata"
 
+            [bindings]
+            root_vm = "AppViewModel"
+            container_name = "CrossKitSharedBridge"
+
             [ios]
             package_name = "CrossKitShared"
             output = "dist/ios"
@@ -347,6 +359,9 @@ mod tests {
         assert_eq!(config.shared.crate_path, "shared");
         assert_eq!(config.shared.package.as_deref(), Some("shared"));
         assert_eq!(config.shared.lib_name.as_deref(), Some("cross_kit_shared"));
+        let bindings = config.bindings.unwrap();
+        assert_eq!(bindings.root_vm, "AppViewModel");
+        assert_eq!(bindings.container_name, "CrossKitSharedBridge");
         let ios = config.ios.unwrap();
         assert_eq!(ios.package_name, "CrossKitShared");
         assert_eq!(ios.output.as_deref(), Some("dist/ios"));

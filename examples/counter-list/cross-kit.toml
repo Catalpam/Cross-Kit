@@ -4,6 +4,10 @@ package = "shared"
 lib_name = "cross_kit_shared"
 metadata_bin = "ck_vm_metadata"
 
+[bindings]
+root_vm = "AppViewModel"
+container_name = "CrossKitSharedBridge"
+
 [ios]
 package_name = "CrossKitShared"
 output = "dist/ios"

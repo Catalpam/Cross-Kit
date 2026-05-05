@@ -20,17 +20,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.crosskit.shared.AppState
-import com.crosskit.shared.AppViewModelBridge
 import com.crosskit.shared.CounterViewModelBridge
 import com.crosskit.shared.ListItem
 import com.crosskit.shared.ListViewModelBridge
 import com.crosskit.shared.Route
+import com.crosskit.shared.rememberCrossKitSharedBridge
 import com.example.crosskit_example_android.ui.theme.CrosskitexampleandroidTheme
 
 class MainActivity : ComponentActivity() {
@@ -47,28 +45,17 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CrossKitApp(modifier: Modifier = Modifier) {
-    val appVm = remember { AppViewModelBridge(initial = 0) }
-    val counterVm = remember(appVm) { appVm.makeCounterVm() }
-    val listVm = remember(appVm) { appVm.makeListVm() }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            listVm.close()
-            counterVm.close()
-            appVm.close()
-        }
-    }
-
-    val state = appVm.state
+    val kit = rememberCrossKitSharedBridge(initial = 0)
+    val state = kit.app.state
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         val contentModifier = Modifier
             .fillMaxSize()
             .padding(innerPadding)
             .padding(16.dp)
         when (val route = state.route) {
-            is Route.ListDetail -> ListDetailScreen(route, onBack = appVm::clearRoute, modifier = contentModifier)
-            is Route.Summary -> SummaryScreen(state, onBack = appVm::clearRoute, modifier = contentModifier)
-            null -> HomeScreen(counterVm, listVm, state, modifier = contentModifier)
+            is Route.ListDetail -> ListDetailScreen(route, onBack = kit.app::clearRoute, modifier = contentModifier)
+            is Route.Summary -> SummaryScreen(state, onBack = kit.app::clearRoute, modifier = contentModifier)
+            null -> HomeScreen(kit.counter, kit.list, state, modifier = contentModifier)
         }
     }
 }

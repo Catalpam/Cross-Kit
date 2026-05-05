@@ -171,6 +171,7 @@ fn ios_options_from_config(
         format: PackageFormat::from_str(&ios.format)?,
         swift_bridges: ios.swift_bridges,
         metadata_bin: config.shared.metadata_bin.clone(),
+        bindings: config.bindings.clone(),
     })
 }
 
@@ -340,6 +341,7 @@ fn android_package_options_from_config(
         targets: android.targets.clone(),
         build_mode: android.build_mode.clone(),
         metadata_bin: config.shared.metadata_bin.clone(),
+        bindings: config.bindings.clone(),
     })
 }
 
@@ -354,6 +356,20 @@ fn generate_android_bridges(config_path: &Path) -> Result<AndroidBridgeReport> {
     replace_generated_dir(&paths.bridge_output)?;
     for metadata in &metadatas {
         let files = cross_kit_codegen::generate_kotlin_bridge(metadata, &paths.package_name)?;
+        for file in files.files {
+            let path = paths.bridge_output.join(file.path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::write(&path, file.contents)?;
+        }
+    }
+    if let Some(bindings) = &config.bindings {
+        let files = cross_kit_codegen::generate_kotlin_root_container(
+            &metadatas,
+            bindings,
+            &paths.package_name,
+        )?;
         for file in files.files {
             let path = paths.bridge_output.join(file.path);
             if let Some(parent) = path.parent() {
@@ -522,6 +538,10 @@ mod tests {
             lib_name = "cross_kit_shared"
             metadata_bin = "ck_vm_metadata"
 
+            [bindings]
+            root_vm = "AppViewModel"
+            container_name = "CrossKitSharedBridge"
+
             [ios]
             package_name = "CrossKitShared"
             output = "dist/ios"
@@ -550,6 +570,9 @@ mod tests {
         assert_eq!(options.lib_type, LibType::Dynamic);
         assert_eq!(options.format, PackageFormat::Pod);
         assert!(!options.swift_bridges);
+        let bindings = options.bindings.unwrap();
+        assert_eq!(bindings.root_vm, "AppViewModel");
+        assert_eq!(bindings.container_name, "CrossKitSharedBridge");
     }
 
     #[test]
@@ -575,6 +598,13 @@ mod tests {
         assert_eq!(options.package.as_deref(), Some("shared"));
         assert_eq!(options.lib_name.as_deref(), Some("cross_kit_shared"));
         assert_eq!(options.metadata_bin, "ck_vm_metadata");
+        assert_eq!(
+            options
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.root_vm.as_str()),
+            Some("AppViewModel")
+        );
         assert_eq!(
             android.crate_path,
             repo_root.join("examples/counter-list/shared")
@@ -606,6 +636,13 @@ mod tests {
             repo_root.join("examples/counter-list/android/gradlew")
         );
         assert_eq!(android_package.java_home, None);
+        assert_eq!(
+            android_package
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.container_name.as_str()),
+            Some("CrossKitSharedBridge")
+        );
     }
 
     #[test]
@@ -616,6 +653,10 @@ mod tests {
             crate_path = "shared"
             lib_name = "cross_kit_shared"
             metadata_bin = "metadata"
+
+            [bindings]
+            root_vm = "AppViewModel"
+            container_name = "CrossKitSharedBridge"
 
             [android]
             package_name = "com.example.shared"
@@ -670,6 +711,13 @@ mod tests {
         assert_eq!(
             package.java_home,
             Some(PathBuf::from("/opt/homebrew/opt/openjdk@21"))
+        );
+        assert_eq!(
+            package
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.root_vm.as_str()),
+            Some("AppViewModel")
         );
     }
 
@@ -799,8 +847,12 @@ mod tests {
         let list_bridge = report
             .bridge_output
             .join("com/crosskit/shared/ListViewModelBridge.kt");
+        let root_container = report
+            .bridge_output
+            .join("com/crosskit/shared/CrossKitSharedBridge.kt");
         let app_code = fs::read_to_string(app_bridge).unwrap();
         let list_code = fs::read_to_string(list_bridge).unwrap();
+        let root_code = fs::read_to_string(root_container).unwrap();
         assert!(app_code.contains("class AppViewModelBridge(initial: Int)"));
         assert!(app_code.contains("fun clearRoute(): Unit"));
         assert!(app_code.contains("fun makeCounterVm(): CounterViewModelBridge"));
@@ -811,6 +863,29 @@ mod tests {
             list_code
                 .contains("if (fromIdx !in items.indices || toIdx !in items.indices) continue")
         );
+        assert!(root_code.contains("class CrossKitSharedBridge(initial: Int)"));
+        assert!(root_code.contains("fun rememberCrossKitSharedBridge(initial: Int)"));
+    }
+
+    #[test]
+    fn counter_list_examples_use_generated_root_container() {
+        let root = repo_root();
+        let ios = fs::read_to_string(
+            root.join("examples/counter-list/ios/crosskit-example-ios/ContentView.swift"),
+        )
+        .unwrap();
+        let android = fs::read_to_string(root.join(
+            "examples/counter-list/android/app/src/main/java/com/example/crosskit_example_android/MainActivity.kt",
+        ))
+        .unwrap();
+
+        assert!(ios.contains("@StateObject private var kit = CrossKitSharedBridge(initial: 0)"));
+        assert!(!ios.contains("CounterViewModelBridge(app:"));
+        assert!(!ios.contains("ListViewModelBridge(app:"));
+        assert!(android.contains("val kit = rememberCrossKitSharedBridge(initial = 0)"));
+        assert!(!android.contains("DisposableEffect(Unit)"));
+        assert!(!android.contains("appVm.makeCounterVm()"));
+        assert!(!android.contains("listVm.close()"));
     }
 
     #[test]

@@ -10,17 +10,8 @@ import Foundation
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var appVm: AppViewModelBridge
-    @StateObject private var counterVm: CounterViewModelBridge
-    @StateObject private var listVm: ListViewModelBridge
+    @StateObject private var kit = CrossKitSharedBridge(initial: 0)
     @State private var path: [AppRoute] = []
-
-    init() {
-        let app = AppViewModelBridge(initial: 0)
-        _appVm = StateObject(wrappedValue: app)
-        _counterVm = StateObject(wrappedValue: CounterViewModelBridge(app: app))
-        _listVm = StateObject(wrappedValue: ListViewModelBridge(app: app))
-    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -37,15 +28,15 @@ struct ContentView: View {
                 case let .listDetail(id, dateCn):
                     ListDetailView(id: id, dateCn: dateCn)
                 case .summary:
-                    SummaryView(state: appVm.state)
+                    SummaryView(state: kit.app.state)
                 }
             }
-            .onChange(of: appVm.state.route) { route in
+            .onChange(of: kit.app.state.route) { route in
                 guard let route else { return }
                 if let appRoute = AppRoute(route: route) {
                     path.append(appRoute)
                 }
-                appVm.clearRoute()
+                kit.app.clearRoute()
             }
         }
     }
@@ -54,11 +45,11 @@ struct ContentView: View {
         VStack(spacing: 12) {
             Text("Counter")
                 .font(.title.bold())
-            Text("\(counterVm.state.value)")
+            Text("\(kit.counter.state.value)")
                 .font(.system(size: 48, weight: .semibold))
                 .monospacedDigit()
                 .padding(.bottom, 4)
-            Button(action: { _ = counterVm.increment() }) {
+            Button(action: { _ = kit.counter.increment() }) {
                 Text("+1")
                     .padding(.horizontal, 24)
                     .padding(.vertical, 10)
@@ -75,7 +66,7 @@ struct ContentView: View {
                 .font(.title2.bold())
             listButtons
             VStack(spacing: 8) {
-                ForEach(listVm.items, id: \.id) { item in
+                ForEach(kit.list.items, id: \.id) { item in
                     HStack {
                         Text("#\(item.id)")
                             .font(.system(.body, design: .monospaced))
@@ -97,9 +88,9 @@ struct ContentView: View {
     private var listButtons: some View {
         VStack(spacing: 8) {
             HStack(spacing: 12) {
-                Button("Add") { _ = listVm.appendNow() }
+                Button("Add") { _ = kit.list.appendNow() }
                     .accessibilityIdentifier("list.append")
-                Button("Insert") { _ = listVm.insertNow(index: 0) }
+                Button("Insert") { _ = kit.list.insertNow(index: 0) }
                     .accessibilityIdentifier("list.insert")
                 Button("Update") { updateFirstItem() }
                     .accessibilityIdentifier("list.update")
@@ -107,7 +98,7 @@ struct ContentView: View {
             HStack(spacing: 12) {
                 Button("Move") { moveLastToFirst() }
                     .accessibilityIdentifier("list.move")
-                Button("Sort") { _ = listVm.sortByTimestampDesc() }
+                Button("Sort") { _ = kit.list.sortByTimestampDesc() }
                     .accessibilityIdentifier("list.sort")
                 Button("Remove") { removeLastItem() }
                     .accessibilityIdentifier("list.remove")
@@ -117,21 +108,21 @@ struct ContentView: View {
     }
 
     private func updateFirstItem() {
-        guard !listVm.items.isEmpty else { return }
+        guard !kit.list.items.isEmpty else { return }
         let timestampMs = Int64(Date().timeIntervalSince1970 * 1000)
-        _ = listVm.updateWithTimestamp(index: 0, timestampMs: timestampMs)
+        _ = kit.list.updateWithTimestamp(index: 0, timestampMs: timestampMs)
     }
 
     private func moveLastToFirst() {
-        let count = listVm.items.count
+        let count = kit.list.items.count
         guard count > 1 else { return }
-        _ = listVm.moveItem(from: Int64(count - 1), to: 0)
+        _ = kit.list.moveItem(from: Int64(count - 1), to: 0)
     }
 
     private func removeLastItem() {
-        let count = listVm.items.count
+        let count = kit.list.items.count
         guard count > 0 else { return }
-        _ = listVm.removeAt(index: Int64(count - 1))
+        _ = kit.list.removeAt(index: Int64(count - 1))
     }
 }
 
