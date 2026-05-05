@@ -13,10 +13,10 @@
       {
         "args": [{ "name": "observer", "rust_type": "Arc<dyn AppObserver>" }],
         "name": "subscribe",
-        "return_type": "i64"
+        "return_type": "SubscriptionId"
       },
       {
-        "args": [{ "name": "id", "rust_type": "i64" }],
+        "args": [{ "name": "id", "rust_type": "SubscriptionId" }],
         "name": "unsubscribe",
         "return_type": "unit"
       },
@@ -61,10 +61,10 @@
       {
         "args": [{ "name": "observer", "rust_type": "Arc<dyn CounterObserver>" }],
         "name": "subscribe",
-        "return_type": "i64"
+        "return_type": "SubscriptionId"
       },
       {
-        "args": [{ "name": "id", "rust_type": "i64" }],
+        "args": [{ "name": "id", "rust_type": "SubscriptionId" }],
         "name": "unsubscribe",
         "return_type": "unit"
       },
@@ -93,10 +93,10 @@
       {
         "args": [{ "name": "observer", "rust_type": "Arc<dyn ListObserver>" }],
         "name": "subscribe",
-        "return_type": "i64"
+        "return_type": "SubscriptionId"
       },
       {
-        "args": [{ "name": "id", "rust_type": "i64" }],
+        "args": [{ "name": "id", "rust_type": "SubscriptionId" }],
         "name": "unsubscribe",
         "return_type": "unit"
       },

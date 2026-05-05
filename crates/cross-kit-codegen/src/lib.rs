@@ -816,6 +816,11 @@ fn kotlin_bridge_name_for_rust_type(rust_type: &str) -> String {
 
 fn map_type_to_kotlin(ty: &str) -> String {
     let ty = ty.trim();
+    let ty = if ty == "crate::runtime::SubscriptionId" {
+        "SubscriptionId"
+    } else {
+        ty
+    };
     if ty == "unit" {
         return "Unit".to_string();
     }
@@ -838,7 +843,9 @@ fn map_type_to_kotlin(ty: &str) -> String {
         return format!("List<{}>", map_type_to_kotlin(inner));
     }
     match ty {
-        "i64" => "Long".to_string(),
+        "i64" | "SubscriptionId" | "cross_kit::SubscriptionId" | "crate::SubscriptionId" => {
+            "Long".to_string()
+        }
         "i32" => "Int".to_string(),
         "u64" => "ULong".to_string(),
         "u32" => "UInt".to_string(),
@@ -854,6 +861,11 @@ fn to_kotlin_method_name(name: &str) -> String {
 
 fn map_type_to_swift(ty: &str) -> String {
     let ty = ty.trim();
+    let ty = if ty == "crate::runtime::SubscriptionId" {
+        "SubscriptionId"
+    } else {
+        ty
+    };
     if ty == "unit" {
         return "Void".to_string();
     }
@@ -884,7 +896,9 @@ fn map_type_to_swift(ty: &str) -> String {
         return format!("[{}]", map_type_to_swift(inner));
     }
     match ty {
-        "i64" => "Int64".to_string(),
+        "i64" | "SubscriptionId" | "cross_kit::SubscriptionId" | "crate::SubscriptionId" => {
+            "Int64".to_string()
+        }
         "i32" => "Int32".to_string(),
         "u64" => "UInt64".to_string(),
         "u32" => "UInt32".to_string(),
@@ -1087,6 +1101,36 @@ mod tests {
     }
 
     #[test]
+    fn generated_swift_bridge_maps_subscription_id_alias() {
+        let mut metadata = state_metadata();
+        metadata.methods[0].return_type = "SubscriptionId".to_string();
+        metadata.methods[1].args[0].rust_type = "SubscriptionId".to_string();
+
+        let code = generate_swift_bridge_source(&metadata).unwrap();
+
+        assert!(code.contains("private var observerId: Int64?"));
+        assert!(code.contains("self.observerId = vm.subscribe(observer: observer)"));
+        assert!(code.contains("vm.unsubscribe(id: id)"));
+        assert!(!code.contains("SubscriptionId"));
+        assert!(!code.contains("cross_kit::SubscriptionId"));
+    }
+
+    #[test]
+    fn generated_kotlin_bridge_maps_subscription_id_alias() {
+        let mut metadata = state_metadata();
+        metadata.methods[0].return_type = "crate::runtime::SubscriptionId".to_string();
+        metadata.methods[1].args[0].rust_type = "crate::runtime::SubscriptionId".to_string();
+
+        let code = generate_kotlin_bridge_source(&metadata, "com.crosskit.shared").unwrap();
+
+        assert!(code.contains("private val observerId: Long = vm.subscribe(this)"));
+        assert!(code.contains("vm.unsubscribe(observerId)"));
+        assert!(!code.contains("SubscriptionId"));
+        assert!(!code.contains("cross_kit::SubscriptionId"));
+        assert!(!code.contains("crate::runtime::SubscriptionId"));
+    }
+
+    #[test]
     fn generates_kotlin_root_state_bridge_with_constructor_args_and_unit_methods() {
         let mut metadata = state_metadata();
         metadata.rust_type = "AppViewModel".to_string();
@@ -1154,12 +1198,24 @@ mod tests {
             generate_swift_bridge_source(&metadata),
             Err(CodegenError::UnsupportedMode(VmMode::Event))
         );
+        assert_eq!(
+            generate_kotlin_bridge_source(&metadata, "com.crosskit.shared"),
+            Err(CodegenError::UnsupportedMode(VmMode::Event))
+        );
     }
 
     #[test]
     fn maps_rust_types_to_swift_types() {
         assert_eq!(map_type_to_swift("unit"), "Void");
         assert_eq!(map_type_to_swift("i64"), "Int64");
+        assert_eq!(map_type_to_swift("SubscriptionId"), "Int64");
+        assert_eq!(map_type_to_swift("cross_kit::SubscriptionId"), "Int64");
+        assert_eq!(map_type_to_swift("crate::SubscriptionId"), "Int64");
+        assert_eq!(map_type_to_swift("crate::runtime::SubscriptionId"), "Int64");
+        assert_eq!(
+            map_type_to_swift("other::runtime::SubscriptionId"),
+            "other::runtime::SubscriptionId"
+        );
         assert_eq!(map_type_to_swift("i32"), "Int32");
         assert_eq!(map_type_to_swift("u64"), "UInt64");
         assert_eq!(map_type_to_swift("u32"), "UInt32");
@@ -1192,6 +1248,14 @@ mod tests {
             "sortByTimestampDesc"
         );
         assert_eq!(map_type_to_kotlin("Option<Vec<i64>>"), "List<Long>?");
+        assert_eq!(map_type_to_kotlin("SubscriptionId"), "Long");
+        assert_eq!(map_type_to_kotlin("cross_kit::SubscriptionId"), "Long");
+        assert_eq!(map_type_to_kotlin("crate::SubscriptionId"), "Long");
+        assert_eq!(map_type_to_kotlin("crate::runtime::SubscriptionId"), "Long");
+        assert_eq!(
+            map_type_to_kotlin("other::runtime::SubscriptionId"),
+            "other::runtime::SubscriptionId"
+        );
         assert_eq!(
             map_type_to_kotlin("Arc<dyn CounterObserver>"),
             "CounterObserver"
