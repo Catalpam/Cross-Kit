@@ -27,3 +27,8 @@ module_name = "crosskitshared"
 gradle_executable = "android/gradlew"
 targets = ["arm64-v8a", "x86_64"]
 build_mode = "release"
+
+[android.maven]
+group_id = "com.crosskit"
+artifact_id = "crosskitshared"
+version = "0.1.0"

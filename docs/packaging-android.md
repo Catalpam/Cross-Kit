@@ -38,6 +38,19 @@ The app imports `com.crosskit.shared.*` bridge APIs. It does not call
 directly. Runtime dependencies such as JNA are declared by the generated Maven
 POM, not by the app.
 
+The Maven coordinates come from `[android.maven]` in `cross-kit.toml`:
+
+```toml
+[android.maven]
+group_id = "com.crosskit"
+artifact_id = "crosskitshared"
+version = "0.1.0"
+```
+
+If the section is omitted, `group_id` and `version` default to the values above.
+`artifact_id` defaults to the resolved `module_name`, which keeps existing
+custom-module Android dependencies compatible.
+
 Required local tools:
 
 - JDK 17 or newer. This workspace has been verified with Homebrew OpenJDK 21.

@@ -1,6 +1,6 @@
 //! Shared core constants and models for Cross-Kit crates.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Default Cross-Kit project configuration file name.
 pub const CONFIG_FILE_NAME: &str = "cross-kit.toml";
@@ -81,6 +81,58 @@ pub struct AndroidConfig {
     pub targets: Vec<String>,
     #[serde(default = "default_release")]
     pub build_mode: String,
+    #[serde(default)]
+    pub maven: AndroidMavenConfig,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AndroidMavenConfig {
+    #[serde(default = "default_android_maven_group_id")]
+    pub group_id: String,
+    #[serde(default = "default_android_maven_artifact_id")]
+    pub artifact_id: String,
+    #[serde(default = "default_android_maven_version")]
+    pub version: String,
+    #[serde(skip)]
+    pub artifact_id_explicit: bool,
+}
+
+impl Default for AndroidMavenConfig {
+    fn default() -> Self {
+        Self {
+            group_id: default_android_maven_group_id(),
+            artifact_id: default_android_maven_artifact_id(),
+            version: default_android_maven_version(),
+            artifact_id_explicit: false,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AndroidMavenConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct AndroidMavenConfigInput {
+            #[serde(default = "default_android_maven_group_id")]
+            group_id: String,
+            artifact_id: Option<String>,
+            #[serde(default = "default_android_maven_version")]
+            version: String,
+        }
+
+        let input = AndroidMavenConfigInput::deserialize(deserializer)?;
+        let artifact_id_explicit = input.artifact_id.is_some();
+        Ok(Self {
+            group_id: input.group_id,
+            artifact_id: input
+                .artifact_id
+                .unwrap_or_else(default_android_maven_artifact_id),
+            version: input.version,
+            artifact_id_explicit,
+        })
+    }
 }
 
 fn default_metadata_bin() -> String {
@@ -93,6 +145,18 @@ fn default_ios_targets() -> Vec<String> {
 
 fn default_android_targets() -> Vec<String> {
     vec!["arm64-v8a".to_string(), "x86_64".to_string()]
+}
+
+fn default_android_maven_group_id() -> String {
+    "com.crosskit".to_string()
+}
+
+fn default_android_maven_artifact_id() -> String {
+    "crosskitshared".to_string()
+}
+
+fn default_android_maven_version() -> String {
+    "0.1.0".to_string()
 }
 
 fn default_release() -> String {
@@ -412,6 +476,11 @@ mod tests {
             java_home = "/opt/homebrew/opt/openjdk@21"
             targets = ["arm64-v8a"]
             build_mode = "debug"
+
+            [android.maven]
+            group_id = "com.example"
+            artifact_id = "example-shared"
+            version = "1.2.3"
             "#,
         )
         .unwrap();
@@ -442,6 +511,10 @@ mod tests {
         );
         assert_eq!(android.targets, ["arm64-v8a"].map(str::to_string));
         assert_eq!(android.build_mode, "debug");
+        assert_eq!(android.maven.group_id, "com.example");
+        assert_eq!(android.maven.artifact_id, "example-shared");
+        assert_eq!(android.maven.version, "1.2.3");
+        assert!(android.maven.artifact_id_explicit);
     }
 
     #[test]
@@ -464,6 +537,32 @@ mod tests {
         assert_eq!(android.java_home, None);
         assert_eq!(android.targets, ["arm64-v8a", "x86_64"].map(str::to_string));
         assert_eq!(android.build_mode, "release");
+        assert_eq!(android.maven.group_id, "com.crosskit");
+        assert_eq!(android.maven.artifact_id, "crosskitshared");
+        assert_eq!(android.maven.version, "0.1.0");
+        assert!(!android.maven.artifact_id_explicit);
+    }
+
+    #[test]
+    fn applies_android_maven_partial_defaults() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+
+            [android.maven]
+            version = "2.0.0"
+            "#,
+        )
+        .unwrap();
+
+        let maven = config.android.unwrap().maven;
+        assert_eq!(maven.group_id, "com.crosskit");
+        assert_eq!(maven.artifact_id, "crosskitshared");
+        assert_eq!(maven.version, "2.0.0");
+        assert!(!maven.artifact_id_explicit);
     }
 
     #[test]

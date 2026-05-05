@@ -312,6 +312,14 @@ fn android_package_options_from_config(
         .as_ref()
         .map(|output| resolve_relative(config_dir, output))
         .unwrap_or_else(|| output.join("gradle-project"));
+    let module_name = android
+        .module_name
+        .clone()
+        .unwrap_or_else(|| "crosskitshared".to_string());
+    let mut maven = android.maven.clone();
+    if !maven.artifact_id_explicit {
+        maven.artifact_id = module_name.clone();
+    }
     Ok(AndroidPackageOptions {
         crate_path: resolve_relative(config_dir, &config.shared.crate_path),
         package_name: android
@@ -325,10 +333,7 @@ fn android_package_options_from_config(
             .unwrap_or_else(|| "cross_kit_shared".to_string()),
         output,
         gradle_project,
-        module_name: android
-            .module_name
-            .clone()
-            .unwrap_or_else(|| "crosskitshared".to_string()),
+        module_name,
         gradle_executable: android
             .gradle_executable
             .as_ref()
@@ -341,6 +346,7 @@ fn android_package_options_from_config(
         targets: android.targets.clone(),
         build_mode: android.build_mode.clone(),
         metadata_bin: config.shared.metadata_bin.clone(),
+        maven,
         bindings: config.bindings.clone(),
     })
 }
@@ -518,6 +524,7 @@ fn run_status(mut command: ProcessCommand, name: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cross_kit_core::AndroidMavenConfig;
     use std::{env, process};
 
     fn repo_root() -> PathBuf {
@@ -631,6 +638,10 @@ mod tests {
             repo_root.join("examples/counter-list/dist/android/gradle-project")
         );
         assert_eq!(android_package.module_name, "crosskitshared");
+        assert_eq!(android_package.maven.group_id, "com.crosskit");
+        assert_eq!(android_package.maven.artifact_id, "crosskitshared");
+        assert_eq!(android_package.maven.version, "0.1.0");
+        assert!(android_package.maven.artifact_id_explicit);
         assert_eq!(
             android_package.gradle_executable,
             repo_root.join("examples/counter-list/android/gradlew")
@@ -669,6 +680,11 @@ mod tests {
             java_home = "/opt/homebrew/opt/openjdk@21"
             targets = ["arm64-v8a"]
             build_mode = "debug"
+
+            [android.maven]
+            group_id = "com.example.sdk"
+            artifact_id = "public-shared"
+            version = "2.3.4"
             "#,
         )
         .unwrap();
@@ -713,12 +729,70 @@ mod tests {
             Some(PathBuf::from("/opt/homebrew/opt/openjdk@21"))
         );
         assert_eq!(
+            package.maven,
+            AndroidMavenConfig {
+                group_id: "com.example.sdk".to_string(),
+                artifact_id: "public-shared".to_string(),
+                version: "2.3.4".to_string(),
+                artifact_id_explicit: true,
+            }
+        );
+        assert_eq!(
             package
                 .bindings
                 .as_ref()
                 .map(|bindings| bindings.root_vm.as_str()),
             Some("AppViewModel")
         );
+    }
+
+    #[test]
+    fn android_package_options_default_maven_artifact_to_module_name() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            module_name = "examplekit"
+            "#,
+        )
+        .unwrap();
+
+        let package =
+            android_package_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+                .unwrap();
+
+        assert_eq!(package.module_name, "examplekit");
+        assert_eq!(package.maven.group_id, "com.crosskit");
+        assert_eq!(package.maven.artifact_id, "examplekit");
+        assert_eq!(package.maven.version, "0.1.0");
+    }
+
+    #[test]
+    fn android_package_options_preserve_explicit_default_artifact_id() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            module_name = "internalshared"
+
+            [android.maven]
+            artifact_id = "crosskitshared"
+            "#,
+        )
+        .unwrap();
+
+        let package =
+            android_package_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+                .unwrap();
+
+        assert_eq!(package.module_name, "internalshared");
+        assert_eq!(package.maven.group_id, "com.crosskit");
+        assert_eq!(package.maven.artifact_id, "crosskitshared");
+        assert_eq!(package.maven.version, "0.1.0");
     }
 
     #[test]
@@ -878,6 +952,10 @@ mod tests {
             "examples/counter-list/android/app/src/main/java/com/example/crosskit_example_android/MainActivity.kt",
         ))
         .unwrap();
+        let android_gradle =
+            fs::read_to_string(root.join("examples/counter-list/android/app/build.gradle.kts"))
+                .unwrap();
+        let config = fs::read_to_string(root.join("examples/counter-list/cross-kit.toml")).unwrap();
 
         assert!(ios.contains("@StateObject private var kit = CrossKitSharedBridge(initial: 0)"));
         assert!(!ios.contains("CounterViewModelBridge(app:"));
@@ -886,6 +964,11 @@ mod tests {
         assert!(!android.contains("DisposableEffect(Unit)"));
         assert!(!android.contains("appVm.makeCounterVm()"));
         assert!(!android.contains("listVm.close()"));
+        assert!(config.contains("[android.maven]"));
+        assert!(config.contains("group_id = \"com.crosskit\""));
+        assert!(config.contains("artifact_id = \"crosskitshared\""));
+        assert!(config.contains("version = \"0.1.0\""));
+        assert!(android_gradle.contains("implementation(\"com.crosskit:crosskitshared:0.1.0\")"));
     }
 
     #[test]
@@ -1063,6 +1146,11 @@ mod tests {
             package_output = "dist/android"
             module_name = "examplekit"
             targets = ["arm64-v8a"]
+
+            [android.maven]
+            group_id = "com.file"
+            artifact_id = "file-shared"
+            version = "4.5.6"
             "#,
         )
         .unwrap();
@@ -1078,6 +1166,15 @@ mod tests {
         );
         assert_eq!(options.module_name, "examplekit");
         assert_eq!(options.targets, vec!["arm64-v8a"]);
+        assert_eq!(
+            options.maven,
+            AndroidMavenConfig {
+                group_id: "com.file".to_string(),
+                artifact_id: "file-shared".to_string(),
+                version: "4.5.6".to_string(),
+                artifact_id_explicit: true,
+            }
+        );
         let _ = fs::remove_dir_all(&temp);
     }
 

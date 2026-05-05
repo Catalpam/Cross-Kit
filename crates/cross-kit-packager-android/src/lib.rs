@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, bail};
 use camino::Utf8PathBuf;
-use cross_kit_core::{BindingsConfig, VmMetadata};
+use cross_kit_core::{AndroidMavenConfig, BindingsConfig, VmMetadata};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -18,6 +18,7 @@ pub struct AndroidPackageOptions {
     pub targets: Vec<String>,
     pub build_mode: String,
     pub metadata_bin: String,
+    pub maven: AndroidMavenConfig,
     pub bindings: Option<BindingsConfig>,
 }
 
@@ -89,6 +90,15 @@ fn validate_options(options: &AndroidPackageOptions) -> Result<()> {
             "unsupported Android build mode '{}'; expected 'debug' or 'release'",
             options.build_mode
         );
+    }
+    if options.maven.group_id.trim().is_empty() {
+        bail!("android.maven.group_id must not be empty");
+    }
+    if options.maven.artifact_id.trim().is_empty() {
+        bail!("android.maven.artifact_id must not be empty");
+    }
+    if options.maven.version.trim().is_empty() {
+        bail!("android.maven.version must not be empty");
     }
     Ok(())
 }
@@ -410,8 +420,8 @@ fn module_gradle(options: &AndroidPackageOptions, layout: &AndroidPackageLayout)
     id("maven-publish")
 }}
 
-group = "com.crosskit"
-version = "0.1.0"
+group = "{group_id}"
+version = "{version}"
 
 android {{
     namespace = "{namespace}"
@@ -461,9 +471,11 @@ publishing {{
 }}
 "#,
         namespace = options.package_name,
+        group_id = &options.maven.group_id,
+        version = &options.maven.version,
         maven_repo = maven_repo,
         variant = options.build_mode,
-        artifact_id = options.module_name
+        artifact_id = &options.maven.artifact_id
     )
 }
 
@@ -539,6 +551,7 @@ mod tests {
             targets: vec!["arm64-v8a".to_string(), "x86_64".to_string()],
             build_mode: "release".to_string(),
             metadata_bin: "ck_vm_metadata".to_string(),
+            maven: AndroidMavenConfig::default(),
             bindings: None,
         }
     }
@@ -630,12 +643,45 @@ mod tests {
         assert!(module.contains("id(\"com.android.library\")"));
         assert!(module.contains("id(\"maven-publish\")"));
         assert!(module.contains("group = \"com.crosskit\""));
+        assert!(module.contains("version = \"0.1.0\""));
+        assert!(module.contains("artifactId = \"crosskitshared\""));
         assert!(module.contains("publish"));
         assert!(module.contains("compose = true"));
         assert!(module.contains("kotlinCompilerExtensionVersion = \"1.5.1\""));
         assert!(module.contains("api(\"androidx.compose.runtime:runtime\")"));
         assert!(module.contains("net.java.dev.jna:jna:5.14.0"));
         assert!(manifest.contains("<manifest"));
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn writes_gradle_project_with_configured_maven_coordinates() {
+        let mut options = options();
+        options.module_name = "internalshared".to_string();
+        options.maven = AndroidMavenConfig {
+            group_id: "com.example.sdk".to_string(),
+            artifact_id: "public-shared".to_string(),
+            version: "2.3.4".to_string(),
+            artifact_id_explicit: true,
+        };
+        let temp = temp_path("gradle-project-maven");
+        let _ = fs::remove_dir_all(&temp);
+        options.output = temp.join("dist");
+        options.gradle_project = temp.join("dist/gradle-project");
+        let layout = package_layout(&options);
+
+        write_gradle_project(&options, &layout).unwrap();
+
+        let settings =
+            fs::read_to_string(layout.gradle_project.join("settings.gradle.kts")).unwrap();
+        let module = fs::read_to_string(layout.module_dir.join("build.gradle.kts")).unwrap();
+        assert!(settings.contains("include(\":internalshared\")"));
+        assert!(module.contains("group = \"com.example.sdk\""));
+        assert!(module.contains("version = \"2.3.4\""));
+        assert!(module.contains("artifactId = \"public-shared\""));
+        assert!(!module.contains("group = \"com.crosskit\""));
+        assert!(!module.contains("version = \"0.1.0\""));
+        assert!(!module.contains("artifactId = \"internalshared\""));
         let _ = fs::remove_dir_all(&temp);
     }
 
@@ -778,6 +824,33 @@ mod tests {
                 .to_string()
                 .contains("module_name")
         );
+
+        let mut invalid = options();
+        invalid.maven.group_id = " ".to_string();
+        assert!(
+            validate_options(&invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("android.maven.group_id")
+        );
+
+        let mut invalid = options();
+        invalid.maven.artifact_id.clear();
+        assert!(
+            validate_options(&invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("android.maven.artifact_id")
+        );
+
+        let mut invalid = options();
+        invalid.maven.version.clear();
+        assert!(
+            validate_options(&invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("android.maven.version")
+        );
     }
 
     #[test]
@@ -890,6 +963,12 @@ mod tests {
             targets: vec!["arm64-v8a".to_string(), "x86_64".to_string()],
             build_mode: "release".to_string(),
             metadata_bin: "ck_vm_metadata".to_string(),
+            maven: AndroidMavenConfig {
+                group_id: "com.example.crosskit".to_string(),
+                artifact_id: "public-shared".to_string(),
+                version: "9.8.7".to_string(),
+                artifact_id_explicit: true,
+            },
             bindings: None,
         };
 
@@ -899,9 +978,29 @@ mod tests {
         assert!(
             report
                 .maven_repo
-                .join("com/crosskit/crosskitshared/0.1.0/crosskitshared-0.1.0.pom")
+                .join("com/example/crosskit/public-shared/9.8.7/public-shared-9.8.7.pom")
                 .exists()
         );
+        let pom = fs::read_to_string(
+            report
+                .maven_repo
+                .join("com/example/crosskit/public-shared/9.8.7/public-shared-9.8.7.pom"),
+        )
+        .unwrap();
+        let module = fs::read_to_string(
+            report
+                .maven_repo
+                .join("com/example/crosskit/public-shared/9.8.7/public-shared-9.8.7.module"),
+        )
+        .unwrap();
+        assert!(pom.contains("<groupId>com.example.crosskit</groupId>"));
+        assert!(pom.contains("<artifactId>public-shared</artifactId>"));
+        assert!(pom.contains("<version>9.8.7</version>"));
+        assert!(pom.contains("<artifactId>jna</artifactId>"));
+        assert!(pom.contains("<artifactId>runtime</artifactId>"));
+        assert!(module.contains("\"group\": \"com.example.crosskit\""));
+        assert!(module.contains("\"module\": \"public-shared\""));
+        assert!(module.contains("\"version\": \"9.8.7\""));
         assert!(
             report
                 .module_dir
