@@ -11,6 +11,7 @@ members = [
     "examples/counter-list/shared",
     "examples/minimal-counter/shared",
     "examples/form-wizard/shared",
+    "examples/task-board/shared",
 ]
 exclude = ["tools/ck-swift-packager"]
 

@@ -1,0 +1,171 @@
+[
+  {
+    "bridge_name": "TaskBoardViewModelBridge",
+    "diff_type": null,
+    "factory": null,
+    "list_item_type": null,
+    "methods": [
+      {
+        "args": [],
+        "name": "new",
+        "return_type": "Arc<Self>"
+      },
+      {
+        "args": [],
+        "name": "make_task_list_vm",
+        "return_type": "Arc<TaskListViewModel>"
+      },
+      {
+        "args": [
+          {
+            "name": "filter",
+            "rust_type": "TaskFilter"
+          }
+        ],
+        "name": "set_filter",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "get_state",
+        "return_type": "TaskBoardState"
+      },
+      {
+        "args": [
+          {
+            "name": "observer",
+            "rust_type": "Arc<dyn TaskBoardObserver>"
+          }
+        ],
+        "name": "subscribe",
+        "return_type": "SubscriptionId"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "SubscriptionId"
+          }
+        ],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      }
+    ],
+    "mode": "state",
+    "observer": {
+      "method": "on_state",
+      "rust_type": "TaskBoardObserver"
+    },
+    "rust_type": "TaskBoardViewModel",
+    "schema_version": 1,
+    "state_type": "TaskBoardState"
+  },
+  {
+    "bridge_name": "TaskListViewModelBridge",
+    "diff_type": "TaskDiff",
+    "factory": {
+      "bridge_name": "TaskBoardViewModelBridge",
+      "method": "make_task_list_vm",
+      "rust_type": "TaskBoardViewModel"
+    },
+    "list_item_type": "TaskItem",
+    "methods": [
+      {
+        "args": [
+          {
+            "name": "title",
+            "rust_type": "String"
+          }
+        ],
+        "name": "add_task",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "i64"
+          }
+        ],
+        "name": "toggle_done",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "i64"
+          },
+          {
+            "name": "title",
+            "rust_type": "String"
+          }
+        ],
+        "name": "rename_task",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "i64"
+          }
+        ],
+        "name": "delete_task",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "from",
+            "rust_type": "i64"
+          },
+          {
+            "name": "to",
+            "rust_type": "i64"
+          }
+        ],
+        "name": "move_visible",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "clear_done",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "add_sample_batch",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "observer",
+            "rust_type": "Arc<dyn TaskListObserver>"
+          }
+        ],
+        "name": "subscribe",
+        "return_type": "SubscriptionId"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "SubscriptionId"
+          }
+        ],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      }
+    ],
+    "mode": "diff_list",
+    "observer": {
+      "method": "on_diffs",
+      "rust_type": "TaskListObserver"
+    },
+    "rust_type": "TaskListViewModel",
+    "schema_version": 1,
+    "state_type": null
+  }
+]

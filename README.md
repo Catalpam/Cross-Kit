@@ -16,6 +16,8 @@ Current workspace roles:
   consumed from generated iOS and Android libraries.
 - `examples/form-wizard`: Rust-owned form validation and route flow rendered by
   generated iOS and Android bridges.
+- `examples/task-board`: Rust-owned task filtering, counters, reorder, and
+  diff-list updates rendered by generated iOS and Android bridges.
 - `examples/counter-list`: end-to-end sample Rust SDK, iOS app, and Android
   app.
 

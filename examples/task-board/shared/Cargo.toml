@@ -1,0 +1,19 @@
+[package]
+name = "task-board-shared"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "cross_kit_task_board_shared"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "ck_task_board_metadata"
+path = "src/bin/ck_task_board_metadata.rs"
+
+[dependencies]
+cross-kit = { path = "../../../crates/cross-kit" }
+uniffi = "0.29"
+
+[dev-dependencies]
+serde_json = "1.0"

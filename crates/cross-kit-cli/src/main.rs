@@ -830,6 +830,85 @@ mod tests {
     }
 
     #[test]
+    fn loads_task_board_example_config() {
+        let repo_root = repo_root();
+        let config_path = repo_root.join("examples/task-board/cross-kit.toml");
+
+        let options = load_ios_options(&config_path).unwrap();
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config = CrossKitConfig::from_toml_str(&content).unwrap();
+        let android = android_paths_from_config(&config_path, &config).unwrap();
+        let android_package = android_package_options_from_config(&config_path, &config).unwrap();
+
+        assert_eq!(
+            options.crate_path,
+            repo_root.join("examples/task-board/shared")
+        );
+        assert_eq!(
+            options.output,
+            Some(repo_root.join("examples/task-board/dist/ios"))
+        );
+        assert_eq!(
+            options.package_name.as_deref(),
+            Some("CrossKitTaskBoardShared")
+        );
+        assert_eq!(options.package.as_deref(), Some("task-board-shared"));
+        assert_eq!(
+            options.lib_name.as_deref(),
+            Some("cross_kit_task_board_shared")
+        );
+        assert_eq!(options.metadata_bin, "ck_task_board_metadata");
+        assert_eq!(
+            options
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.root_vm.as_str()),
+            Some("TaskBoardViewModel")
+        );
+        assert_eq!(
+            options
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.container_name.as_str()),
+            Some("CrossKitTaskBoardBridge")
+        );
+        assert_eq!(
+            android.crate_path,
+            repo_root.join("examples/task-board/shared")
+        );
+        assert_eq!(android.package_name, "com.crosskit.taskboard.shared");
+        assert_eq!(
+            android.bridge_output,
+            repo_root.join("examples/task-board/android/app/build/generated/cross-kit/bridges")
+        );
+        assert_eq!(
+            android.binding_output,
+            repo_root.join("examples/task-board/android/app/build/generated/cross-kit/uniffi")
+        );
+        assert_eq!(
+            android.jni_libs_output,
+            repo_root.join("examples/task-board/dist/android/jniLibs")
+        );
+        assert_eq!(
+            android_package.output,
+            repo_root.join("examples/task-board/dist/android")
+        );
+        assert_eq!(
+            android_package.gradle_project,
+            repo_root.join("examples/task-board/dist/android/gradle-project")
+        );
+        assert_eq!(android_package.module_name, "crosskittaskboardshared");
+        assert_eq!(android_package.maven.group_id, "com.crosskit");
+        assert_eq!(android_package.maven.artifact_id, "crosskittaskboardshared");
+        assert_eq!(android_package.maven.version, "0.1.0");
+        assert!(android_package.maven.artifact_id_explicit);
+        assert_eq!(
+            android_package.gradle_executable,
+            repo_root.join("examples/task-board/android/gradlew")
+        );
+    }
+
+    #[test]
     fn maps_android_config_to_generated_and_native_paths() {
         let config = CrossKitConfig::from_toml_str(
             r#"

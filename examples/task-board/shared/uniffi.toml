@@ -1,0 +1,7 @@
+[bindings.kotlin]
+package_name = "com.crosskit.taskboard.shared"
+cdylib_name = "cross_kit_task_board_shared"
+
+[bindings.swift]
+module_name = "CrossKitTaskBoardShared"
+cdylib_name = "cross_kit_task_board_shared"

@@ -682,8 +682,7 @@ public final class {bridge}: ObservableObject, {observer} {{
                 guard fromIdx >= 0, toIdx >= 0, fromIdx < items.count, toIdx < items.count else {{ continue }}
                 if fromIdx == toIdx {{ continue }}
                 let item = items.remove(at: fromIdx)
-                let adjusted = fromIdx < toIdx ? toIdx - 1 : toIdx
-                items.insert(item, at: adjusted)
+                items.insert(item, at: toIdx)
             }}
         }}
     }}
@@ -855,8 +854,7 @@ class {bridge}{ctor_sig} : {observer} {{
                     if (fromIdx !in items.indices || toIdx !in items.indices) continue
                     if (fromIdx == toIdx) continue
                     val item = items.removeAt(fromIdx)
-                    val adjusted = if (fromIdx < toIdx) toIdx - 1 else toIdx
-                    items.add(adjusted, item)
+                    items.add(toIdx, item)
                 }}
             }}
         }}
@@ -1683,6 +1681,8 @@ mod tests {
         assert!(code.contains("public func appendNow() -> ListItem"));
         assert!(code.contains("public func applyDiffs(diffs: [ListDiff]) -> Bool"));
         assert!(code.contains("case let .move(from, to):"));
+        assert!(code.contains("items.insert(item, at: toIdx)"));
+        assert!(!code.contains("fromIdx < toIdx ? toIdx - 1 : toIdx"));
         assert!(code.contains("private func clampIndex"));
         assert!(code.contains("vm.subscribe(observer: observer)"));
     }
@@ -1798,6 +1798,8 @@ mod tests {
         assert!(
             code.contains("if (fromIdx !in items.indices || toIdx !in items.indices) continue")
         );
+        assert!(code.contains("items.add(toIdx, item)"));
+        assert!(!code.contains("if (fromIdx < toIdx) toIdx - 1 else toIdx"));
         assert!(code.contains("private fun clampIndex(index: Long, upperBound: Int): Int"));
         assert!(code.contains("handler.post { applyDiffsToItems(diffs) }"));
         assert!(code.contains("vm.close()"));
