@@ -748,6 +748,88 @@ mod tests {
     }
 
     #[test]
+    fn loads_form_wizard_example_config() {
+        let repo_root = repo_root();
+        let config_path = repo_root.join("examples/form-wizard/cross-kit.toml");
+
+        let options = load_ios_options(&config_path).unwrap();
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config = CrossKitConfig::from_toml_str(&content).unwrap();
+        let android = android_paths_from_config(&config_path, &config).unwrap();
+        let android_package = android_package_options_from_config(&config_path, &config).unwrap();
+
+        assert_eq!(
+            options.crate_path,
+            repo_root.join("examples/form-wizard/shared")
+        );
+        assert_eq!(
+            options.output,
+            Some(repo_root.join("examples/form-wizard/dist/ios"))
+        );
+        assert_eq!(
+            options.package_name.as_deref(),
+            Some("CrossKitFormWizardShared")
+        );
+        assert_eq!(options.package.as_deref(), Some("form-wizard-shared"));
+        assert_eq!(
+            options.lib_name.as_deref(),
+            Some("cross_kit_form_wizard_shared")
+        );
+        assert_eq!(options.metadata_bin, "ck_form_wizard_metadata");
+        assert_eq!(
+            options
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.root_vm.as_str()),
+            Some("FormWizardViewModel")
+        );
+        assert_eq!(
+            options
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.container_name.as_str()),
+            Some("CrossKitFormWizardBridge")
+        );
+        assert_eq!(
+            android.crate_path,
+            repo_root.join("examples/form-wizard/shared")
+        );
+        assert_eq!(android.package_name, "com.crosskit.formwizard.shared");
+        assert_eq!(
+            android.bridge_output,
+            repo_root.join("examples/form-wizard/android/app/build/generated/cross-kit/bridges")
+        );
+        assert_eq!(
+            android.binding_output,
+            repo_root.join("examples/form-wizard/android/app/build/generated/cross-kit/uniffi")
+        );
+        assert_eq!(
+            android.jni_libs_output,
+            repo_root.join("examples/form-wizard/dist/android/jniLibs")
+        );
+        assert_eq!(
+            android_package.output,
+            repo_root.join("examples/form-wizard/dist/android")
+        );
+        assert_eq!(
+            android_package.gradle_project,
+            repo_root.join("examples/form-wizard/dist/android/gradle-project")
+        );
+        assert_eq!(android_package.module_name, "crosskitformwizardshared");
+        assert_eq!(android_package.maven.group_id, "com.crosskit");
+        assert_eq!(
+            android_package.maven.artifact_id,
+            "crosskitformwizardshared"
+        );
+        assert_eq!(android_package.maven.version, "0.1.0");
+        assert!(android_package.maven.artifact_id_explicit);
+        assert_eq!(
+            android_package.gradle_executable,
+            repo_root.join("examples/form-wizard/android/gradlew")
+        );
+    }
+
+    #[test]
     fn maps_android_config_to_generated_and_native_paths() {
         let config = CrossKitConfig::from_toml_str(
             r#"

@@ -1,0 +1,98 @@
+[
+  {
+    "bridge_name": "FormWizardViewModelBridge",
+    "diff_type": null,
+    "factory": null,
+    "list_item_type": null,
+    "methods": [
+      {
+        "args": [],
+        "name": "new",
+        "return_type": "Arc<Self>"
+      },
+      {
+        "args": [
+          {
+            "name": "name",
+            "rust_type": "String"
+          }
+        ],
+        "name": "update_name",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "email",
+            "rust_type": "String"
+          }
+        ],
+        "name": "update_email",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "password",
+            "rust_type": "String"
+          }
+        ],
+        "name": "update_password",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "confirm",
+            "rust_type": "String"
+          }
+        ],
+        "name": "update_confirm",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "next",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "back",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "get_state",
+        "return_type": "FormWizardState"
+      },
+      {
+        "args": [
+          {
+            "name": "observer",
+            "rust_type": "Arc<dyn FormWizardObserver>"
+          }
+        ],
+        "name": "subscribe",
+        "return_type": "SubscriptionId"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "SubscriptionId"
+          }
+        ],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      }
+    ],
+    "mode": "state",
+    "observer": {
+      "method": "on_state",
+      "rust_type": "FormWizardObserver"
+    },
+    "rust_type": "FormWizardViewModel",
+    "schema_version": 1,
+    "state_type": "FormWizardState"
+  }
+]

@@ -10,6 +10,7 @@ members = [
     "crates/cross-kit-cli",
     "examples/counter-list/shared",
     "examples/minimal-counter/shared",
+    "examples/form-wizard/shared",
 ]
 exclude = ["tools/ck-swift-packager"]
 

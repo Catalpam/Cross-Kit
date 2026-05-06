@@ -14,6 +14,8 @@ Current workspace roles:
 - `crates/cross-kit-packager-ios`: iOS SwiftPM/XCFramework packager.
 - `examples/minimal-counter`: smallest end-to-end sample showing one Rust VM
   consumed from generated iOS and Android libraries.
+- `examples/form-wizard`: Rust-owned form validation and route flow rendered by
+  generated iOS and Android bridges.
 - `examples/counter-list`: end-to-end sample Rust SDK, iOS app, and Android
   app.
 
