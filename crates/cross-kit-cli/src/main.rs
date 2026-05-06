@@ -535,6 +535,14 @@ mod tests {
         env::temp_dir().join(format!("cross-kit-cli-test-{}-{name}", process::id()))
     }
 
+    struct RemoveFileOnDrop(PathBuf);
+
+    impl Drop for RemoveFileOnDrop {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+
     #[test]
     fn maps_ios_config_to_packager_options_with_relative_paths() {
         let config = CrossKitConfig::from_toml_str(
@@ -627,7 +635,7 @@ mod tests {
         );
         assert_eq!(
             android.jni_libs_output,
-            repo_root.join("examples/counter-list/android/app/src/main/jniLibs")
+            repo_root.join("examples/counter-list/dist/android/jniLibs")
         );
         assert_eq!(
             android_package.output,
@@ -653,6 +661,89 @@ mod tests {
                 .as_ref()
                 .map(|bindings| bindings.container_name.as_str()),
             Some("CrossKitSharedBridge")
+        );
+    }
+
+    #[test]
+    fn loads_minimal_counter_example_config() {
+        let repo_root = repo_root();
+        let config_path = repo_root.join("examples/minimal-counter/cross-kit.toml");
+
+        let options = load_ios_options(&config_path).unwrap();
+        let content = fs::read_to_string(&config_path).unwrap();
+        let config = CrossKitConfig::from_toml_str(&content).unwrap();
+        let android = android_paths_from_config(&config_path, &config).unwrap();
+        let android_package = android_package_options_from_config(&config_path, &config).unwrap();
+
+        assert_eq!(
+            options.crate_path,
+            repo_root.join("examples/minimal-counter/shared")
+        );
+        assert_eq!(
+            options.output,
+            Some(repo_root.join("examples/minimal-counter/dist/ios"))
+        );
+        assert_eq!(
+            options.package_name.as_deref(),
+            Some("CrossKitMinimalCounterShared")
+        );
+        assert_eq!(options.package.as_deref(), Some("minimal-counter-shared"));
+        assert_eq!(
+            options.lib_name.as_deref(),
+            Some("cross_kit_minimal_counter_shared")
+        );
+        assert_eq!(options.metadata_bin, "ck_minimal_counter_metadata");
+        assert_eq!(
+            options
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.root_vm.as_str()),
+            Some("CounterViewModel")
+        );
+        assert_eq!(
+            options
+                .bindings
+                .as_ref()
+                .map(|bindings| bindings.container_name.as_str()),
+            Some("CrossKitMinimalCounterBridge")
+        );
+        assert_eq!(
+            android.crate_path,
+            repo_root.join("examples/minimal-counter/shared")
+        );
+        assert_eq!(android.package_name, "com.crosskit.minimalcounter.shared");
+        assert_eq!(
+            android.bridge_output,
+            repo_root
+                .join("examples/minimal-counter/android/app/build/generated/cross-kit/bridges")
+        );
+        assert_eq!(
+            android.binding_output,
+            repo_root.join("examples/minimal-counter/android/app/build/generated/cross-kit/uniffi")
+        );
+        assert_eq!(
+            android.jni_libs_output,
+            repo_root.join("examples/minimal-counter/dist/android/jniLibs")
+        );
+        assert_eq!(
+            android_package.output,
+            repo_root.join("examples/minimal-counter/dist/android")
+        );
+        assert_eq!(
+            android_package.gradle_project,
+            repo_root.join("examples/minimal-counter/dist/android/gradle-project")
+        );
+        assert_eq!(android_package.module_name, "crosskitminimalcountershared");
+        assert_eq!(android_package.maven.group_id, "com.crosskit");
+        assert_eq!(
+            android_package.maven.artifact_id,
+            "crosskitminimalcountershared"
+        );
+        assert_eq!(android_package.maven.version, "0.1.0");
+        assert!(android_package.maven.artifact_id_explicit);
+        assert_eq!(
+            android_package.gradle_executable,
+            repo_root.join("examples/minimal-counter/android/gradlew")
         );
     }
 
@@ -1029,6 +1120,25 @@ mod tests {
     }
 
     #[test]
+    fn android_metadata_loader_reports_failed_binary_stderr() {
+        let paths = AndroidPaths {
+            crate_path: PathBuf::from("/tmp/project/shared"),
+            package_name: "com.crosskit.shared".to_string(),
+            bridge_output: PathBuf::from("/tmp/project/bridges"),
+            binding_output: PathBuf::from("/tmp/project/uniffi"),
+            jni_libs_output: PathBuf::from("/tmp/project/jniLibs"),
+            targets: vec!["arm64-v8a".to_string()],
+            build_mode: "release".to_string(),
+            lib_name: "cross_kit_shared".to_string(),
+            metadata_bin: "false".to_string(),
+        };
+
+        let err = load_vm_metadatas(&paths).unwrap_err();
+
+        assert!(err.to_string().contains("metadata binary false failed"));
+    }
+
+    #[test]
     fn generated_dir_and_process_helpers_report_errors() {
         let temp = temp_path("generated-dir");
         let _ = fs::remove_dir_all(&temp);
@@ -1128,6 +1238,75 @@ mod tests {
     }
 
     #[test]
+    fn run_dispatches_successful_example_commands_when_toolchains_are_available() {
+        if env::var_os("CROSS_KIT_RUN_TOOLCHAIN_TESTS").is_none() {
+            return;
+        }
+
+        let root = repo_root();
+        let config = root.join("examples/minimal-counter/cross-kit.toml");
+
+        run(Cli {
+            command: Command::Gen {
+                command: GenCommand::Bridges {
+                    platform: Platform::Android,
+                    config: config.clone(),
+                },
+            },
+        })
+        .unwrap();
+
+        if command_succeeds("cargo", &["ndk", "--version"]) {
+            run(Cli {
+                command: Command::Android {
+                    command: AndroidCommand::BuildNative {
+                        config: config.clone(),
+                    },
+                },
+            })
+            .unwrap();
+            let _ = fs::remove_dir_all(root.join("examples/minimal-counter/dist/android/jniLibs"));
+        }
+
+        let java_home = Path::new("/opt/homebrew/opt/openjdk@21");
+        if java_home.exists() && command_succeeds("cargo", &["ndk", "--version"]) {
+            let package_config = config.with_file_name("cross-kit.package-test.toml");
+            let _cleanup = RemoveFileOnDrop(package_config.clone());
+            let content = fs::read_to_string(&config).unwrap().replace(
+                "gradle_executable = \"android/gradlew\"",
+                "gradle_executable = \"android/gradlew\"\njava_home = \"/opt/homebrew/opt/openjdk@21\"",
+            );
+            fs::write(&package_config, content).unwrap();
+            run(Cli {
+                command: Command::Android {
+                    command: AndroidCommand::Package {
+                        config: package_config.clone(),
+                    },
+                },
+            })
+            .unwrap();
+            let _ = fs::remove_file(package_config);
+        }
+
+        if command_succeeds("xcodebuild", &["-version"]) {
+            run(Cli {
+                command: Command::Ios {
+                    command: IosCommand::Package { config },
+                },
+            })
+            .unwrap();
+        }
+    }
+
+    fn command_succeeds(program: &str, args: &[&str]) -> bool {
+        ProcessCommand::new(program)
+            .args(args)
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    #[test]
     fn load_android_package_options_reads_config_file() {
         let temp = temp_path("android-package-config");
         let _ = fs::remove_dir_all(&temp);
@@ -1191,6 +1370,67 @@ mod tests {
         let err =
             ios_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config).unwrap_err();
         assert!(err.to_string().contains("missing [ios] section"));
+    }
+
+    #[test]
+    fn rejects_invalid_ios_and_android_package_values() {
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = ""
+
+            [ios]
+            package_name = ""
+            "#,
+        )
+        .unwrap();
+        let err =
+            ios_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config).unwrap_err();
+        assert!(err.to_string().contains("[ios].package_name"));
+
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = ""
+
+            [ios]
+            package_name = "CrossKitShared"
+            "#,
+        )
+        .unwrap();
+        let err =
+            ios_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config).unwrap_err();
+        assert!(err.to_string().contains("[shared].crate_path"));
+
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            build_mode = "fast"
+            "#,
+        )
+        .unwrap();
+        let err =
+            android_package_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+                .unwrap_err();
+        assert!(err.to_string().contains("unsupported Android build mode"));
+
+        let config = CrossKitConfig::from_toml_str(
+            r#"
+            [shared]
+            crate_path = "shared"
+
+            [android]
+            targets = []
+            "#,
+        )
+        .unwrap();
+        let err =
+            android_package_options_from_config(Path::new("/tmp/project/cross-kit.toml"), &config)
+                .unwrap_err();
+        assert!(err.to_string().contains("[android].targets"));
     }
 
     #[test]

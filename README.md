@@ -12,6 +12,8 @@ Current workspace roles:
 - `crates/cross-kit-codegen`: Swift/Kotlin bridge source generation.
 - `crates/cross-kit-core`: shared config and metadata contracts.
 - `crates/cross-kit-packager-ios`: iOS SwiftPM/XCFramework packager.
+- `examples/minimal-counter`: smallest end-to-end sample showing one Rust VM
+  consumed from generated iOS and Android libraries.
 - `examples/counter-list`: end-to-end sample Rust SDK, iOS app, and Android
   app.
 

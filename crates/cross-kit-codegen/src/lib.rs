@@ -1895,6 +1895,57 @@ mod tests {
     }
 
     #[test]
+    fn generates_zero_arg_root_container_without_children() {
+        let mut root = app_metadata();
+        root.methods.retain(|method| method.name != "new");
+        root.methods
+            .retain(|method| !method.name.starts_with("make_"));
+        let swift = generate_swift_root_container(&[root.clone()], &bindings())
+            .unwrap()
+            .files
+            .remove(0)
+            .contents;
+        let kotlin = generate_kotlin_root_container(&[root], &bindings(), "com.crosskit.shared")
+            .unwrap()
+            .files
+            .remove(0)
+            .contents;
+
+        assert!(swift.contains("public init()"));
+        assert!(swift.contains("let app = AppViewModelBridge()"));
+        assert!(kotlin.contains("class CrossKitSharedBridge() : AutoCloseable"));
+        assert!(kotlin.contains("val app: AppViewModelBridge = AppViewModelBridge()"));
+        assert!(kotlin.contains("fun rememberCrossKitSharedBridge(): CrossKitSharedBridge"));
+        assert!(kotlin.contains("val kit = remember(Unit) { CrossKitSharedBridge() }"));
+    }
+
+    #[test]
+    fn rejects_root_graph_with_missing_bindings_or_metadata() {
+        let mut empty_root = bindings();
+        empty_root.root_vm.clear();
+        let err = generate_swift_root_container(&[app_metadata()], &empty_root).unwrap_err();
+        assert!(err.to_string().contains("[bindings].root_vm"));
+
+        let mut empty_container = bindings();
+        empty_container.container_name.clear();
+        let err = generate_swift_root_container(&[app_metadata()], &empty_container).unwrap_err();
+        assert!(err.to_string().contains("[bindings].container_name"));
+
+        let err = generate_swift_root_container(&[], &bindings()).unwrap_err();
+        assert!(err.to_string().contains("requires at least one VM"));
+
+        let err = generate_swift_root_container(&[app_metadata(), app_metadata()], &bindings())
+            .unwrap_err();
+        assert!(err.to_string().contains("is ambiguous in metadata"));
+
+        let mut orphan = state_metadata();
+        orphan.factory = None;
+        let err =
+            generate_swift_root_container(&[app_metadata(), orphan], &bindings()).unwrap_err();
+        assert!(err.to_string().contains("must be created by root VM"));
+    }
+
+    #[test]
     fn rejects_invalid_root_graph_contracts() {
         let err = generate_swift_root_container(&[state_metadata()], &bindings()).unwrap_err();
         assert!(
@@ -2181,6 +2232,10 @@ mod tests {
             "CounterViewModelProtocol"
         );
         assert_eq!(
+            map_type_to_swift("Arc<AppViewModel>"),
+            "AppViewModelProtocol"
+        );
+        assert_eq!(
             map_type_to_swift("std::sync::Arc<ListViewModel>"),
             "ListViewModelProtocol"
         );
@@ -2237,6 +2292,9 @@ mod tests {
         assert_eq!(indent("a\n\nb", 2), "  a\n\n  b");
         assert_eq!(indent_optional("  ", 4), "");
         assert_eq!(indent_optional("x", 4), "    x");
+        assert_eq!(property_name("ViewModel"), "viewModel");
+        assert_eq!(property_name(""), "");
+        assert!(!is_ascii_identifier(""));
     }
 
     #[test]

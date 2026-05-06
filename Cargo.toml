@@ -9,6 +9,7 @@ members = [
     "crates/cross-kit-packager-ios",
     "crates/cross-kit-cli",
     "examples/counter-list/shared",
+    "examples/minimal-counter/shared",
 ]
 exclude = ["tools/ck-swift-packager"]
 

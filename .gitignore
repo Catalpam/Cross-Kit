@@ -52,6 +52,7 @@ target
 **/jniLibs/
 
 # Build artifacts
+**/*.profraw
 **/dist/
 **/*.apk
 **/*.aar

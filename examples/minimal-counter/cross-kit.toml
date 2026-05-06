@@ -1,15 +1,15 @@
 [shared]
 crate_path = "shared"
-package = "shared"
-lib_name = "cross_kit_shared"
-metadata_bin = "ck_vm_metadata"
+package = "minimal-counter-shared"
+lib_name = "cross_kit_minimal_counter_shared"
+metadata_bin = "ck_minimal_counter_metadata"
 
 [bindings]
-root_vm = "AppViewModel"
-container_name = "CrossKitSharedBridge"
+root_vm = "CounterViewModel"
+container_name = "CrossKitMinimalCounterBridge"
 
 [ios]
-package_name = "CrossKitShared"
+package_name = "CrossKitMinimalCounterShared"
 output = "dist/ios"
 targets = ["ios", "ios-sim", "ios-sim-x86_64"]
 build_mode = "release"
@@ -18,17 +18,17 @@ format = "spm"
 swift_bridges = true
 
 [android]
-package_name = "com.crosskit.shared"
+package_name = "com.crosskit.minimalcounter.shared"
 output = "android/app/build/generated/cross-kit"
 jni_libs_output = "dist/android/jniLibs"
 package_output = "dist/android"
 gradle_project_output = "dist/android/gradle-project"
-module_name = "crosskitshared"
+module_name = "crosskitminimalcountershared"
 gradle_executable = "android/gradlew"
 targets = ["arm64-v8a", "x86_64"]
 build_mode = "release"
 
 [android.maven]
 group_id = "com.crosskit"
-artifact_id = "crosskitshared"
+artifact_id = "crosskitminimalcountershared"
 version = "0.1.0"

@@ -395,6 +395,26 @@ mod tests {
     }
 
     #[test]
+    fn default_config_helpers_match_public_contract() {
+        assert_eq!(default_metadata_bin(), "ck_vm_metadata");
+        assert_eq!(
+            default_ios_targets(),
+            vec!["ios".to_string(), "ios-sim".to_string()]
+        );
+        assert_eq!(
+            default_android_targets(),
+            vec!["arm64-v8a".to_string(), "x86_64".to_string()]
+        );
+        assert_eq!(default_android_maven_group_id(), "com.crosskit");
+        assert_eq!(default_android_maven_artifact_id(), "crosskitshared");
+        assert_eq!(default_android_maven_version(), "0.1.0");
+        assert_eq!(default_release(), "release");
+        assert_eq!(default_static_lib(), "static");
+        assert_eq!(default_spm(), "spm");
+        assert!(default_true());
+    }
+
+    #[test]
     fn parses_cross_kit_toml_with_ios_package_config() {
         let config = CrossKitConfig::from_toml_str(
             r#"

@@ -1,0 +1,7 @@
+[bindings.kotlin]
+package_name = "com.crosskit.minimalcounter.shared"
+cdylib_name = "cross_kit_minimal_counter_shared"
+
+[bindings.swift]
+module_name = "CrossKitMinimalCounterShared"
+cdylib_name = "cross_kit_minimal_counter_shared"
