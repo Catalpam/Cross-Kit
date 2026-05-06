@@ -18,6 +18,8 @@ Current workspace roles:
   generated iOS and Android bridges.
 - `examples/task-board`: Rust-owned task filtering, counters, reorder, and
   diff-list updates rendered by generated iOS and Android bridges.
+- `examples/shopping-cart`: Rust-owned cart merge, quantity validation,
+  discounts, and totals rendered by generated iOS and Android bridges.
 - `examples/counter-list`: end-to-end sample Rust SDK, iOS app, and Android
   app.
 

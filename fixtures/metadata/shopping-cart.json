@@ -1,0 +1,156 @@
+[
+  {
+    "bridge_name": "ShoppingCartViewModelBridge",
+    "diff_type": null,
+    "factory": null,
+    "list_item_type": null,
+    "methods": [
+      {
+        "args": [],
+        "name": "new",
+        "return_type": "Arc<Self>"
+      },
+      {
+        "args": [],
+        "name": "make_cart_vm",
+        "return_type": "Arc<CartViewModel>"
+      },
+      {
+        "args": [
+          {
+            "name": "code",
+            "rust_type": "String"
+          }
+        ],
+        "name": "apply_coupon",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "clear_coupon",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "checkout",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "get_state",
+        "return_type": "ShoppingCartState"
+      },
+      {
+        "args": [
+          {
+            "name": "observer",
+            "rust_type": "Arc<dyn ShoppingCartObserver>"
+          }
+        ],
+        "name": "subscribe",
+        "return_type": "SubscriptionId"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "SubscriptionId"
+          }
+        ],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      }
+    ],
+    "mode": "state",
+    "observer": {
+      "method": "on_state",
+      "rust_type": "ShoppingCartObserver"
+    },
+    "rust_type": "ShoppingCartViewModel",
+    "schema_version": 1,
+    "state_type": "ShoppingCartState"
+  },
+  {
+    "bridge_name": "CartViewModelBridge",
+    "diff_type": "CartDiff",
+    "factory": {
+      "bridge_name": "ShoppingCartViewModelBridge",
+      "method": "make_cart_vm",
+      "rust_type": "ShoppingCartViewModel"
+    },
+    "list_item_type": "CartItem",
+    "methods": [
+      {
+        "args": [
+          {
+            "name": "product_id",
+            "rust_type": "i64"
+          },
+          {
+            "name": "quantity",
+            "rust_type": "i64"
+          }
+        ],
+        "name": "add_product",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "product_id",
+            "rust_type": "i64"
+          },
+          {
+            "name": "quantity",
+            "rust_type": "i64"
+          }
+        ],
+        "name": "set_quantity",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "product_id",
+            "rust_type": "i64"
+          }
+        ],
+        "name": "remove_product",
+        "return_type": "unit"
+      },
+      {
+        "args": [],
+        "name": "clear_cart",
+        "return_type": "unit"
+      },
+      {
+        "args": [
+          {
+            "name": "observer",
+            "rust_type": "Arc<dyn CartObserver>"
+          }
+        ],
+        "name": "subscribe",
+        "return_type": "SubscriptionId"
+      },
+      {
+        "args": [
+          {
+            "name": "id",
+            "rust_type": "SubscriptionId"
+          }
+        ],
+        "name": "unsubscribe",
+        "return_type": "unit"
+      }
+    ],
+    "mode": "diff_list",
+    "observer": {
+      "method": "on_diffs",
+      "rust_type": "CartObserver"
+    },
+    "rust_type": "CartViewModel",
+    "schema_version": 1,
+    "state_type": null
+  }
+]

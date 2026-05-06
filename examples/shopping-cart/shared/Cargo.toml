@@ -1,0 +1,19 @@
+[package]
+name = "shopping-cart-shared"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "cross_kit_shopping_cart_shared"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[[bin]]
+name = "ck_shopping_cart_metadata"
+path = "src/bin/ck_shopping_cart_metadata.rs"
+
+[dependencies]
+cross-kit = { path = "../../../crates/cross-kit" }
+uniffi = "0.29"
+
+[dev-dependencies]
+serde_json = "1.0"

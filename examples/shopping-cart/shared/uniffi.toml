@@ -1,0 +1,7 @@
+[bindings.kotlin]
+package_name = "com.crosskit.shoppingcart.shared"
+cdylib_name = "cross_kit_shopping_cart_shared"
+
+[bindings.swift]
+module_name = "CrossKitShoppingCartShared"
+cdylib_name = "cross_kit_shopping_cart_shared"
