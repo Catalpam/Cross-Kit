@@ -13,6 +13,7 @@ members = [
     "examples/form-wizard/shared",
     "examples/task-board/shared",
     "examples/shopping-cart/shared",
+    "examples/search-refresh/shared",
 ]
 exclude = ["tools/ck-swift-packager"]
 

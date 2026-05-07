@@ -20,6 +20,8 @@ Current workspace roles:
   diff-list updates rendered by generated iOS and Android bridges.
 - `examples/shopping-cart`: Rust-owned cart merge, quantity validation,
   discounts, and totals rendered by generated iOS and Android bridges.
+- `examples/search-refresh`: state-driven long-operation sample with loading,
+  progress, cancellation, typed errors, and stale-result protection.
 - `examples/counter-list`: end-to-end sample Rust SDK, iOS app, and Android
   app.
 

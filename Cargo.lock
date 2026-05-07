@@ -704,6 +704,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "search-refresh-shared"
+version = "0.1.0"
+dependencies = [
+ "cross-kit",
+ "serde_json",
+ "uniffi",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"

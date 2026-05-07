@@ -1,0 +1,34 @@
+[shared]
+crate_path = "shared"
+package = "search-refresh-shared"
+lib_name = "cross_kit_search_refresh_shared"
+metadata_bin = "ck_search_refresh_metadata"
+
+[bindings]
+root_vm = "SearchViewModel"
+container_name = "CrossKitSearchRefreshBridge"
+
+[ios]
+package_name = "CrossKitSearchRefreshShared"
+output = "dist/ios"
+targets = ["ios", "ios-sim", "ios-sim-x86_64"]
+build_mode = "release"
+lib_type = "static"
+format = "spm"
+swift_bridges = true
+
+[android]
+package_name = "com.crosskit.searchrefresh.shared"
+output = "android/app/build/generated/cross-kit"
+jni_libs_output = "dist/android/jniLibs"
+package_output = "dist/android"
+gradle_project_output = "dist/android/gradle-project"
+module_name = "crosskitsearchrefreshshared"
+gradle_executable = "android/gradlew"
+targets = ["arm64-v8a", "x86_64"]
+build_mode = "release"
+
+[android.maven]
+group_id = "com.crosskit"
+artifact_id = "crosskitsearchrefreshshared"
+version = "0.1.0"
