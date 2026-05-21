@@ -1,7 +1,6 @@
 package com.example.crosskit_example_android
 
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertIsEnabled
@@ -37,7 +36,7 @@ class SearchScreenInstrumentedTest {
         composeRule.onNodeWithTag("search.progress").assertTextEquals("Progress 50%")
 
         composeRule.onNodeWithTag("search.tick").performClick()
-        composeRule.onNodeWithTag("search.loading").assertTextEquals("Idle")
+        composeRule.onNodeWithTag("search.loading").assertTextEquals("Results")
         composeRule.onNodeWithTag("search.progress").assertTextEquals("Progress 100%")
         composeRule.onNodeWithTag("search.result.1.title").assertTextEquals("rust guide")
 
@@ -47,22 +46,45 @@ class SearchScreenInstrumentedTest {
     }
 
     @Test
-    fun errorCancelAndRetryUseGeneratedState() {
+    fun noticeCancelAndRetryUseGeneratedState() {
         composeRule.onNodeWithTag("search.query").performTextInput("network")
         composeRule.onNodeWithTag("search.submit").performClick()
         composeRule.onNodeWithTag("search.tick").performClick()
         composeRule.onNodeWithTag("search.tick").performClick()
-        composeRule.onNodeWithTag("search.error").assertTextContains("Network", substring = true)
+        composeRule.onNodeWithTag("search.loading").assertTextEquals("Failed")
+        composeRule.onNodeWithTag("search.notice").assertTextEquals("Search is temporarily unavailable.")
+        composeRule.onNodeWithTag("search.retry").assertIsEnabled()
+
+        composeRule.onNodeWithTag("search.retry").performClick()
+        composeRule.onNodeWithTag("search.loading").assertTextEquals("Loading")
+        composeRule.onAllNodesWithTag("search.notice").assertCountEquals(0)
+        composeRule.onNodeWithTag("search.tick").performClick()
+        composeRule.onNodeWithTag("search.tick").performClick()
+        composeRule.onNodeWithTag("search.loading").assertTextEquals("Results")
+        composeRule.onNodeWithTag("search.result.1.title").assertTextEquals("network guide")
 
         composeRule.onNodeWithTag("search.query").performTextClearance()
         composeRule.onNodeWithTag("search.query").performTextInput("rust")
         composeRule.onNodeWithTag("search.submit").performClick()
         composeRule.onNodeWithTag("search.cancel").performClick()
-        composeRule.onNodeWithTag("search.error").assertTextContains("Cancelled", substring = true)
+        composeRule.onNodeWithTag("search.loading").assertTextEquals("Idle")
+        composeRule.onAllNodesWithTag("search.notice").assertCountEquals(0)
 
         composeRule.onNodeWithTag("search.submit").performClick()
         composeRule.onNodeWithTag("search.tick").performClick()
         composeRule.onNodeWithTag("search.tick").performClick()
         composeRule.onNodeWithTag("search.result.1.title").assertTextEquals("rust guide")
+    }
+
+    @Test
+    fun emptyResultsUseGeneratedPresentationState() {
+        composeRule.onNodeWithTag("search.query").performTextInput("empty")
+        composeRule.onNodeWithTag("search.submit").performClick()
+        composeRule.onNodeWithTag("search.tick").performClick()
+        composeRule.onNodeWithTag("search.tick").performClick()
+
+        composeRule.onNodeWithTag("search.loading").assertTextEquals("Empty")
+        composeRule.onNodeWithTag("search.empty").assertTextEquals("No results")
+        composeRule.onNodeWithTag("search.notice").assertTextEquals("No results for \"empty\".")
     }
 }

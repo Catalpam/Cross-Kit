@@ -23,7 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.crosskit.searchrefresh.shared.SearchNotice
 import com.crosskit.searchrefresh.shared.SearchState
+import com.crosskit.searchrefresh.shared.SearchStatus
 import com.crosskit.searchrefresh.shared.SearchViewModelBridge
 import com.crosskit.searchrefresh.shared.rememberCrossKitSearchRefreshBridge
 import com.example.crosskit_example_android.ui.theme.CrosskitexampleandroidTheme
@@ -64,8 +66,8 @@ fun CrossKitApp(modifier: Modifier = Modifier) {
 
 @Composable
 private fun SearchScreen(search: SearchViewModelBridge, modifier: Modifier = Modifier) {
-    // Loading, progress, typed errors, and stale-result protection come from
-    // Rust. The UI just renders fields and sends user intents back.
+    // Loading, progress, notices, and stale-result protection come from Rust.
+    // The UI just renders fields and sends user intents back.
     val state = search.state
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
@@ -83,41 +85,45 @@ private fun SearchScreen(search: SearchViewModelBridge, modifier: Modifier = Mod
         )
         Controls(search, state)
         Progress(state)
-        state.error?.let { error ->
-            Text(
-                text = error.toString(),
-                modifier = Modifier.testTag("search.error"),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
+        Notice(state.notice)
         Results(state)
     }
 }
 
 @Composable
 private fun Controls(search: SearchViewModelBridge, state: SearchState) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(
-            enabled = state.canSubmit,
-            onClick = search::submit,
-            modifier = Modifier.testTag("search.submit")
-        ) {
-            Text(text = "Submit")
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                enabled = state.canSubmit,
+                onClick = search::submit,
+                modifier = Modifier.testTag("search.submit")
+            ) {
+                Text(text = "Submit")
+            }
+            Button(
+                enabled = state.canRetry,
+                onClick = search::submit,
+                modifier = Modifier.testTag("search.retry")
+            ) {
+                Text(text = "Retry")
+            }
         }
-        Button(
-            enabled = state.canCancel,
-            onClick = search::tick,
-            modifier = Modifier.testTag("search.tick")
-        ) {
-            Text(text = "Tick")
-        }
-        Button(
-            enabled = state.canCancel,
-            onClick = search::cancel,
-            modifier = Modifier.testTag("search.cancel")
-        ) {
-            Text(text = "Cancel")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                enabled = state.canCancel,
+                onClick = search::tick,
+                modifier = Modifier.testTag("search.tick")
+            ) {
+                Text(text = "Tick")
+            }
+            Button(
+                enabled = state.canCancel,
+                onClick = search::cancel,
+                modifier = Modifier.testTag("search.cancel")
+            ) {
+                Text(text = "Cancel")
+            }
         }
     }
 }
@@ -126,7 +132,7 @@ private fun Controls(search: SearchViewModelBridge, state: SearchState) {
 private fun Progress(state: SearchState) {
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
-            text = if (state.isLoading) "Loading" else "Idle",
+            text = statusLabel(state.status),
             modifier = Modifier.testTag("search.loading")
         )
         Text(
@@ -137,6 +143,21 @@ private fun Progress(state: SearchState) {
 }
 
 @Composable
+private fun Notice(notice: SearchNotice?) {
+    notice ?: return
+    Text(
+        text = noticeText(notice),
+        modifier = Modifier.testTag("search.notice"),
+        color = when (notice) {
+            is SearchNotice.Inline -> MaterialTheme.colorScheme.error
+            is SearchNotice.Toast -> MaterialTheme.colorScheme.tertiary
+            is SearchNotice.Dialog -> MaterialTheme.colorScheme.primary
+        },
+        style = MaterialTheme.typography.bodySmall
+    )
+}
+
+@Composable
 private fun Results(state: SearchState) {
     LazyColumn(
         modifier = Modifier
@@ -144,6 +165,15 @@ private fun Results(state: SearchState) {
             .testTag("search.results"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        if (state.status == SearchStatus.EMPTY) {
+            item {
+                Text(
+                    text = "No results",
+                    modifier = Modifier.testTag("search.empty"),
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
         items(state.results, key = { result -> result.rank }) { result ->
             Column {
                 Text(
@@ -160,6 +190,22 @@ private fun Results(state: SearchState) {
         }
     }
 }
+
+private fun statusLabel(status: SearchStatus): String =
+    when (status) {
+        SearchStatus.IDLE -> "Idle"
+        SearchStatus.LOADING -> "Loading"
+        SearchStatus.RESULTS -> "Results"
+        SearchStatus.EMPTY -> "Empty"
+        SearchStatus.FAILED -> "Failed"
+    }
+
+private fun noticeText(notice: SearchNotice): String =
+    when (notice) {
+        is SearchNotice.Inline -> notice.message
+        is SearchNotice.Toast -> notice.message
+        is SearchNotice.Dialog -> "${notice.title}: ${notice.message}"
+    }
 
 @Preview(showBackground = true)
 @Composable

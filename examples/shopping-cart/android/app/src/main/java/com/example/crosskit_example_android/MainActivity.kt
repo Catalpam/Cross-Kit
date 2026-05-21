@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.crosskit.shoppingcart.shared.CartItem
+import com.crosskit.shoppingcart.shared.CartNotice
 import com.crosskit.shoppingcart.shared.CartViewModelBridge
 import com.crosskit.shoppingcart.shared.Product
 import com.crosskit.shoppingcart.shared.ShoppingCartState
@@ -87,15 +88,9 @@ private fun ShoppingCartScreen(
         Totals(state)
         ProductList(state.products, cart)
         CartList(cart)
-        Actions(cart, onApplyCoupon, onClearCoupon, onCheckout)
-        state.lastError?.let { error ->
-            Text(
-                text = error.toString(),
-                modifier = Modifier.testTag("cart.error"),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall
-            )
-        }
+        Actions(state, cart, onApplyCoupon, onClearCoupon, onCheckout)
+        Notice(state.checkoutNotice)
+        StockWarnings(state)
     }
 }
 
@@ -111,7 +106,7 @@ private fun Totals(state: ShoppingCartState) {
             Text(text = "Tax ${money(state.taxCents)}", modifier = Modifier.testTag("cart.tax"))
             Text(text = "Total ${money(state.totalCents)}", modifier = Modifier.testTag("cart.total"))
             Text(
-                text = if (state.checkoutReady) "Ready" else "Not ready",
+                text = if (state.checkoutEnabled) "Ready" else "Not ready",
                 modifier = Modifier.testTag("cart.ready")
             )
         }
@@ -186,6 +181,7 @@ private fun CartRow(index: Int, item: CartItem, cart: CartViewModelBridge) {
 
 @Composable
 private fun Actions(
+    state: ShoppingCartState,
     cart: CartViewModelBridge,
     onApplyCoupon: (String) -> Unit,
     onClearCoupon: () -> Unit,
@@ -201,11 +197,44 @@ private fun Actions(
         Button(onClick = onClearCoupon, modifier = Modifier.testTag("coupon.clear")) {
             Text(text = "Clear coupon")
         }
-        Button(onClick = onCheckout, modifier = Modifier.testTag("cart.checkout")) {
+        Button(
+            enabled = state.checkoutEnabled,
+            onClick = onCheckout,
+            modifier = Modifier.testTag("cart.checkout")
+        ) {
             Text(text = "Checkout")
         }
         Button(onClick = cart::clearCart, modifier = Modifier.testTag("cart.clear")) {
             Text(text = "Clear cart")
+        }
+    }
+}
+
+@Composable
+private fun Notice(notice: CartNotice?) {
+    notice ?: return
+    Text(
+        text = noticeText(notice),
+        modifier = Modifier.testTag("cart.notice"),
+        color = when (notice) {
+            is CartNotice.Inline -> MaterialTheme.colorScheme.error
+            is CartNotice.Toast -> MaterialTheme.colorScheme.tertiary
+            is CartNotice.Dialog -> MaterialTheme.colorScheme.primary
+        },
+        style = MaterialTheme.typography.bodySmall
+    )
+}
+
+@Composable
+private fun StockWarnings(state: ShoppingCartState) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        state.stockWarnings.forEach { warning ->
+            Text(
+                text = warning.message,
+                modifier = Modifier.testTag("cart.stock.warning.${warning.productId}"),
+                color = MaterialTheme.colorScheme.tertiary,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }
@@ -215,6 +244,13 @@ private fun money(cents: Long): String {
     val abs = kotlin.math.abs(cents)
     return "$sign\$${abs / 100}.${(abs % 100).toString().padStart(2, '0')}"
 }
+
+private fun noticeText(notice: CartNotice): String =
+    when (notice) {
+        is CartNotice.Inline -> notice.message
+        is CartNotice.Toast -> notice.message
+        is CartNotice.Dialog -> "${notice.title}: ${notice.message}"
+    }
 
 @Preview(showBackground = true)
 @Composable

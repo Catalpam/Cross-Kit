@@ -10,7 +10,8 @@ uniffi::setup_scaffolding!();
 
 // Search Refresh demonstrates long-running work without exposing async APIs
 // through Cross-Kit. UI calls synchronous actions (`submit`, `tick`, `cancel`)
-// and observes state fields such as loading/progress/results/error.
+// and observes presentation state such as status, progress, results, notices,
+// and retry availability.
 const TICK_PROGRESS: i64 = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -21,21 +22,32 @@ pub struct SearchResult {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
-pub enum SearchError {
-    EmptyQuery,
-    Network { code: i64, message: String },
-    Cancelled,
+pub enum SearchStatus {
+    Idle,
+    Loading,
+    Results,
+    Empty,
+    Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum SearchNotice {
+    Inline { message: String },
+    Toast { message: String },
+    Dialog { title: String, message: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct SearchState {
     pub query: String,
+    pub status: SearchStatus,
     pub is_loading: bool,
     pub progress: i64,
     pub results: Vec<SearchResult>,
-    pub error: Option<SearchError>,
+    pub notice: Option<SearchNotice>,
     pub can_submit: bool,
     pub can_cancel: bool,
+    pub can_retry: bool,
 }
 
 #[uniffi::export(with_foreign)]
@@ -49,13 +61,22 @@ struct ActiveSearch {
     query: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum SearchFailure {
+    EmptyQuery,
+    NetworkUnavailable,
+}
+
 #[derive(Clone, Debug)]
 struct StoreState {
     query: String,
+    status: SearchStatus,
     is_loading: bool,
     progress: i64,
     results: Vec<SearchResult>,
-    error: Option<SearchError>,
+    notice: Option<SearchNotice>,
+    can_retry: bool,
+    failed_once_queries: Vec<String>,
     next_request_id: i64,
     active: Option<ActiveSearch>,
 }
@@ -66,8 +87,8 @@ pub struct SearchViewModel {
 }
 
 // State mode intentionally keeps the platform surface small: one observable
-// state object plus action methods. Failure is modeled as typed state, not as a
-// Swift `throw` or Kotlin `suspend` result.
+// state object plus action methods. Domain failures stay internal to Rust and
+// are projected into presentation state for SwiftUI/Compose.
 #[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl SearchViewModel {
@@ -84,10 +105,12 @@ impl SearchViewModel {
             // how a real search token/cancellation check would prevent stale
             // results from winning after the UI has moved on.
             state.query = query;
+            state.status = SearchStatus::Idle;
             state.is_loading = false;
             state.progress = 0;
             state.results.clear();
-            state.error = None;
+            state.notice = None;
+            state.can_retry = false;
             state.active = None;
             state.to_search_state()
         });
@@ -100,7 +123,7 @@ impl SearchViewModel {
                 state.is_loading = false;
                 state.progress = 0;
                 state.results.clear();
-                state.error = Some(SearchError::EmptyQuery);
+                state.apply_failure(SearchFailure::EmptyQuery);
                 state.active = None;
                 return state.to_search_state();
             }
@@ -108,10 +131,12 @@ impl SearchViewModel {
             let request_id = state.next_request_id;
             state.next_request_id += 1;
             state.query = query.clone();
+            state.status = SearchStatus::Loading;
             state.is_loading = true;
             state.progress = 0;
             state.results.clear();
-            state.error = None;
+            state.notice = None;
+            state.can_retry = false;
             state.active = Some(ActiveSearch {
                 id: request_id,
                 query,
@@ -138,9 +163,11 @@ impl SearchViewModel {
     pub fn cancel(&self) {
         self.mutate_optional_notify(|state| {
             state.active.as_ref()?;
+            state.status = SearchStatus::Idle;
             state.is_loading = false;
             state.progress = 0;
-            state.error = Some(SearchError::Cancelled);
+            state.notice = None;
+            state.can_retry = false;
             state.active = None;
             Some(state.to_search_state())
         });
@@ -152,7 +179,7 @@ impl SearchViewModel {
 
     pub fn subscribe(&self, observer: Arc<dyn SearchObserver>) -> SubscriptionId {
         // Generated root containers rely on this replay to show a consistent
-        // idle/loading/error state as soon as the bridge is created.
+        // idle/loading/presentation state as soon as the bridge is created.
         self.state.subscribe_replay_with(
             observer,
             StoreState::to_search_state,
@@ -201,10 +228,13 @@ impl StoreState {
     fn new() -> Self {
         Self {
             query: String::new(),
+            status: SearchStatus::Idle,
             is_loading: false,
             progress: 0,
             results: Vec::new(),
-            error: None,
+            notice: None,
+            can_retry: false,
+            failed_once_queries: Vec::new(),
             next_request_id: 1,
             active: None,
         }
@@ -213,13 +243,28 @@ impl StoreState {
     fn to_search_state(&self) -> SearchState {
         SearchState {
             query: self.query.clone(),
+            status: self.status.clone(),
             is_loading: self.is_loading,
             progress: self.progress,
             results: self.results.clone(),
-            error: self.error.clone(),
+            notice: self.notice.clone(),
             can_submit: !self.is_loading && !self.query.trim().is_empty(),
             can_cancel: self.is_loading,
+            can_retry: self.can_retry,
         }
+    }
+
+    fn apply_failure(&mut self, failure: SearchFailure) {
+        self.status = SearchStatus::Failed;
+        self.can_retry = failure == SearchFailure::NetworkUnavailable;
+        self.notice = Some(match failure {
+            SearchFailure::EmptyQuery => SearchNotice::Inline {
+                message: "Enter a query to search.".to_string(),
+            },
+            SearchFailure::NetworkUnavailable => SearchNotice::Toast {
+                message: "Search is temporarily unavailable.".to_string(),
+            },
+        });
     }
 }
 
@@ -231,19 +276,50 @@ fn complete_active(state: &mut StoreState, request_id: i64, query: &str) {
     state.is_loading = false;
     state.progress = 100;
     state.active = None;
-    if query.eq_ignore_ascii_case("network") || query.eq_ignore_ascii_case("fail") {
+    if should_fail_once(state, query) {
         state.results.clear();
-        state.error = Some(SearchError::Network {
-            code: 503,
-            message: "temporary search failure".to_string(),
-        });
+        state.apply_failure(SearchFailure::NetworkUnavailable);
     } else {
-        state.error = None;
         state.results = search_results(query);
+        state.status = if state.results.is_empty() {
+            SearchStatus::Empty
+        } else {
+            SearchStatus::Results
+        };
+        state.notice = if state.results.is_empty() {
+            Some(SearchNotice::Inline {
+                message: format!("No results for \"{query}\"."),
+            })
+        } else {
+            None
+        };
+        state.can_retry = false;
     }
 }
 
+fn should_fail_once(state: &mut StoreState, query: &str) -> bool {
+    if !(query.eq_ignore_ascii_case("network") || query.eq_ignore_ascii_case("fail")) {
+        return false;
+    }
+
+    let normalized = query.to_ascii_lowercase();
+    if state
+        .failed_once_queries
+        .iter()
+        .any(|failed| failed == &normalized)
+    {
+        return false;
+    }
+
+    state.failed_once_queries.push(normalized);
+    true
+}
+
 fn search_results(query: &str) -> Vec<SearchResult> {
+    if query.eq_ignore_ascii_case("empty") {
+        return Vec::new();
+    }
+
     vec![
         SearchResult {
             title: format!("{query} guide"),
@@ -301,12 +377,14 @@ mod tests {
 
         let state = vm.get_state();
         assert_eq!(state.query, "");
+        assert_eq!(state.status, SearchStatus::Idle);
         assert!(!state.is_loading);
         assert_eq!(state.progress, 0);
         assert!(state.results.is_empty());
-        assert_eq!(state.error, None);
+        assert_eq!(state.notice, None);
         assert!(!state.can_submit);
         assert!(!state.can_cancel);
+        assert!(!state.can_retry);
     }
 
     #[test]
@@ -322,17 +400,25 @@ mod tests {
     }
 
     #[test]
-    fn empty_submit_reports_typed_error_without_loading() {
+    fn empty_submit_reports_inline_notice_without_loading() {
         let vm = SearchViewModel::new();
 
         vm.update_query("  ".to_string());
         vm.submit();
 
         let state = vm.get_state();
-        assert_eq!(state.error, Some(SearchError::EmptyQuery));
+        assert_eq!(state.status, SearchStatus::Failed);
+        assert_eq!(
+            state.notice,
+            Some(SearchNotice::Inline {
+                message: "Enter a query to search.".to_string(),
+            })
+        );
         assert!(!state.is_loading);
         assert_eq!(state.progress, 0);
         assert!(state.results.is_empty());
+        assert!(!state.can_retry);
+        assert!(!state.can_cancel);
     }
 
     #[test]
@@ -342,25 +428,30 @@ mod tests {
         vm.update_query("rust".to_string());
         vm.submit();
         let state = vm.get_state();
+        assert_eq!(state.status, SearchStatus::Loading);
         assert!(state.is_loading);
         assert_eq!(state.progress, 0);
         assert!(state.can_cancel);
+        assert!(!state.can_retry);
 
         vm.tick();
         let state = vm.get_state();
+        assert_eq!(state.status, SearchStatus::Loading);
         assert!(state.is_loading);
         assert_eq!(state.progress, 50);
         assert!(state.results.is_empty());
 
         vm.tick();
         let state = vm.get_state();
+        assert_eq!(state.status, SearchStatus::Results);
         assert!(!state.is_loading);
         assert_eq!(state.progress, 100);
         assert_eq!(state.results.len(), 3);
         assert_eq!(state.results[0].title, "rust guide");
-        assert_eq!(state.error, None);
+        assert_eq!(state.notice, None);
         assert!(state.can_submit);
         assert!(!state.can_cancel);
+        assert!(!state.can_retry);
     }
 
     #[test]
@@ -384,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn network_failure_preserves_structured_error_fields() {
+    fn network_failure_projects_to_retryable_presentation_state() {
         let vm = SearchViewModel::new();
 
         vm.update_query("network".to_string());
@@ -393,16 +484,66 @@ mod tests {
         vm.tick();
 
         let state = vm.get_state();
+        assert_eq!(state.status, SearchStatus::Failed);
         assert_eq!(
-            state.error,
-            Some(SearchError::Network {
-                code: 503,
-                message: "temporary search failure".to_string(),
+            state.notice,
+            Some(SearchNotice::Toast {
+                message: "Search is temporarily unavailable.".to_string(),
             })
         );
         assert!(!state.is_loading);
         assert!(state.results.is_empty());
         assert!(state.can_submit);
+        assert!(state.can_retry);
+    }
+
+    #[test]
+    fn retry_after_transient_network_failure_clears_notice_and_returns_results() {
+        let vm = SearchViewModel::new();
+
+        vm.update_query("network".to_string());
+        vm.submit();
+        vm.tick();
+        vm.tick();
+        assert_eq!(vm.get_state().status, SearchStatus::Failed);
+        assert!(vm.get_state().can_retry);
+
+        vm.submit();
+        let loading = vm.get_state();
+        assert_eq!(loading.status, SearchStatus::Loading);
+        assert_eq!(loading.notice, None);
+        assert!(!loading.can_retry);
+
+        vm.tick();
+        vm.tick();
+
+        let state = vm.get_state();
+        assert_eq!(state.status, SearchStatus::Results);
+        assert_eq!(state.notice, None);
+        assert_eq!(state.results[0].title, "network guide");
+        assert!(!state.can_retry);
+    }
+
+    #[test]
+    fn empty_result_is_explicit_presentation_state() {
+        let vm = SearchViewModel::new();
+
+        vm.update_query("empty".to_string());
+        vm.submit();
+        vm.tick();
+        vm.tick();
+
+        let state = vm.get_state();
+        assert_eq!(state.status, SearchStatus::Empty);
+        assert_eq!(
+            state.notice,
+            Some(SearchNotice::Inline {
+                message: "No results for \"empty\".".to_string(),
+            })
+        );
+        assert!(state.results.is_empty());
+        assert!(state.can_submit);
+        assert!(!state.can_retry);
     }
 
     #[test]
@@ -415,9 +556,10 @@ mod tests {
 
         let after = vm.get_state();
         assert_eq!(after, before);
-        assert_eq!(after.error, None);
+        assert_eq!(after.notice, None);
         assert!(after.can_submit);
         assert!(!after.can_cancel);
+        assert!(!after.can_retry);
     }
 
     #[test]
@@ -433,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn cancel_sets_cancelled_state_and_ignores_stale_completion() {
+    fn cancel_returns_to_idle_and_ignores_stale_completion() {
         let vm = SearchViewModel::new();
 
         vm.update_query("rust".to_string());
@@ -443,10 +585,12 @@ mod tests {
         vm.complete_request_for_tests(request_id);
 
         let state = vm.get_state();
-        assert_eq!(state.error, Some(SearchError::Cancelled));
+        assert_eq!(state.status, SearchStatus::Idle);
+        assert_eq!(state.notice, None);
         assert!(!state.is_loading);
         assert_eq!(state.progress, 0);
         assert!(state.results.is_empty());
+        assert!(!state.can_retry);
     }
 
     #[test]
@@ -483,10 +627,11 @@ mod tests {
 
         let state = vm.get_state();
         assert_eq!(state.query, "new");
+        assert_eq!(state.status, SearchStatus::Idle);
         assert!(!state.is_loading);
         assert_eq!(state.progress, 0);
         assert!(state.results.is_empty());
-        assert_eq!(state.error, None);
+        assert_eq!(state.notice, None);
         assert!(state.can_submit);
     }
 
@@ -504,8 +649,9 @@ mod tests {
 
         let state = vm.get_state();
         assert_eq!(state.query, "new");
+        assert_eq!(state.status, SearchStatus::Idle);
         assert!(state.results.is_empty());
-        assert_eq!(state.error, None);
+        assert_eq!(state.notice, None);
         assert!(state.can_submit);
     }
 

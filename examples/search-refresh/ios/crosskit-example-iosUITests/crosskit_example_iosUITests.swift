@@ -23,13 +23,13 @@ final class crosskit_example_iosUITests: XCTestCase {
         XCTAssertTrue(waitForLabel("Progress 50%", id: "search.progress", in: app))
 
         tap(app, id: "search.tick")
-        XCTAssertTrue(waitForLabel("Idle", id: "search.loading", in: app))
+        XCTAssertTrue(waitForLabel("Results", id: "search.loading", in: app))
         XCTAssertTrue(waitForLabel("Progress 100%", id: "search.progress", in: app))
         XCTAssertTrue(waitForLabel("rust guide", id: "search.result.1.title", in: app))
     }
 
     @MainActor
-    func testErrorRendersFromState() throws {
+    func testNoticeRendersFromState() throws {
         let app = XCUIApplication()
         app.launch()
 
@@ -38,11 +38,20 @@ final class crosskit_example_iosUITests: XCTestCase {
         tap(app, id: "search.submit")
         tap(app, id: "search.tick")
         tap(app, id: "search.tick")
-        XCTAssertTrue(waitForLabelContaining("network", id: "search.error", in: app))
+        XCTAssertTrue(waitForLabel("Failed", id: "search.loading", in: app))
+        XCTAssertTrue(waitForLabel("Search is temporarily unavailable.", id: "search.notice", in: app))
+        XCTAssertTrue(app.buttons["search.retry"].isEnabled)
+
+        tap(app, id: "search.retry")
+        tap(app, id: "search.tick")
+        tap(app, id: "search.tick")
+        XCTAssertTrue(waitForLabel("Results", id: "search.loading", in: app))
+        XCTAssertTrue(waitForLabel("network guide", id: "search.result.1.title", in: app))
+        XCTAssertTrue(waitForMissing(id: "search.notice", in: app))
     }
 
     @MainActor
-    func testCancelRendersFromState() throws {
+    func testCancelReturnsToIdlePresentationState() throws {
         let app = XCUIApplication()
         app.launch()
 
@@ -50,7 +59,8 @@ final class crosskit_example_iosUITests: XCTestCase {
         app.textFields["search.query"].typeText("rust")
         tap(app, id: "search.submit")
         tap(app, id: "search.cancel")
-        XCTAssertTrue(waitForLabelContaining("cancelled", id: "search.error", in: app))
+        XCTAssertTrue(waitForLabel("Idle", id: "search.loading", in: app))
+        XCTAssertFalse(app.staticTexts["search.notice"].exists)
     }
 
     @MainActor
@@ -91,5 +101,18 @@ final class crosskit_example_iosUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
         return element.exists && element.label.contains(fragment)
+    }
+
+    @MainActor
+    private func waitForMissing(id: String, in app: XCUIApplication) -> Bool {
+        let element = app.staticTexts[id]
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            if !element.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        return !element.exists
     }
 }

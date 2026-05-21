@@ -1,8 +1,10 @@
 package com.example.crosskit_example_android
 
 import androidx.compose.ui.test.assertTextEquals
-import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -34,10 +36,16 @@ class ShoppingCartInstrumentedTest {
         composeRule.onNodeWithTag("cart.total").assertTextEquals("Total \$25.32")
 
         composeRule.onNodeWithTag("coupon.bad").performClick()
-        composeRule.onNodeWithTag("cart.error").assertTextContains("InvalidCoupon", substring = true)
+        composeRule.onNodeWithTag("cart.notice").assertTextEquals("Coupon BOGUS is not valid.")
+        composeRule.onNodeWithTag("cart.ready").assertTextEquals("Ready")
+        composeRule.onNodeWithTag("cart.checkout").assertIsEnabled()
+
+        composeRule.onNodeWithTag("cart.checkout").performClick()
+        composeRule.onAllNodesWithTag("cart.notice").assertCountEquals(0)
 
         composeRule.onNodeWithTag("cart.more.1").performClick()
         composeRule.onNodeWithTag("cart.items.count").assertTextEquals("Items 3")
+        composeRule.onNodeWithTag("cart.ready").assertTextEquals("Ready")
 
         composeRule.onNodeWithTag("cart.remove.1").performClick()
         composeRule.onNodeWithTag("cart.items.count").assertTextEquals("Items 0")
@@ -46,6 +54,7 @@ class ShoppingCartInstrumentedTest {
         composeRule.onNodeWithTag("product.add.3").performClick()
         composeRule.onNodeWithTag("product.add.3").performClick()
         composeRule.onNodeWithTag("product.add.3").performClick()
-        composeRule.onNodeWithTag("cart.error").assertTextContains("OutOfStock", substring = true)
+        composeRule.onNodeWithTag("cart.notice").assertTextEquals("Only 2 left in stock.")
+        composeRule.onNodeWithTag("cart.stock.warning.3").assertTextEquals("Requested 3, only 2 in stock.")
     }
 }

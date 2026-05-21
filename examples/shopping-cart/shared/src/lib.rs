@@ -44,20 +44,16 @@ impl InsertDiff<CartItem> for CartDiff {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
-pub enum CartError {
-    QuantityMustBePositive,
-    ProductNotFound {
-        product_id: i64,
-    },
-    OutOfStock {
-        product_id: i64,
-        requested: i64,
-        available: i64,
-    },
-    InvalidCoupon {
-        code: String,
-    },
-    CartEmpty,
+pub enum CartNotice {
+    Inline { message: String },
+    Toast { message: String },
+    Dialog { title: String, message: String },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct StockWarning {
+    pub product_id: i64,
+    pub message: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -69,8 +65,9 @@ pub struct ShoppingCartState {
     pub tax_cents: i64,
     pub total_cents: i64,
     pub item_count: i64,
-    pub checkout_ready: bool,
-    pub last_error: Option<CartError>,
+    pub checkout_enabled: bool,
+    pub checkout_notice: Option<CartNotice>,
+    pub stock_warnings: Vec<StockWarning>,
 }
 
 #[uniffi::export(with_foreign)]
@@ -97,7 +94,25 @@ struct StoreInner {
     products: Vec<Product>,
     cart: Vec<CartItem>,
     coupon_code: Option<String>,
-    last_error: Option<CartError>,
+    checkout_notice: Option<CartNotice>,
+    stock_warnings: Vec<StockWarning>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CartFailure {
+    QuantityMustBePositive,
+    ProductNotFound {
+        product_id: i64,
+    },
+    OutOfStock {
+        product_id: i64,
+        requested: i64,
+        available: i64,
+    },
+    InvalidCoupon {
+        code: String,
+    },
+    CartEmpty,
 }
 
 #[derive(uniffi::Object)]
@@ -133,9 +148,9 @@ impl ShoppingCartViewModel {
             let code = code.trim().to_ascii_uppercase();
             if code == SAVE10 {
                 inner.coupon_code = Some(code);
-                inner.last_error = None;
+                clear_cart_presentation(inner);
             } else {
-                inner.last_error = Some(CartError::InvalidCoupon { code });
+                apply_cart_failure(inner, CartFailure::InvalidCoupon { code });
             }
             Vec::new()
         });
@@ -144,18 +159,18 @@ impl ShoppingCartViewModel {
     pub fn clear_coupon(&self) {
         self.store.mutate(|inner| {
             inner.coupon_code = None;
-            inner.last_error = None;
+            clear_cart_presentation(inner);
             Vec::new()
         });
     }
 
     pub fn checkout(&self) {
         self.store.mutate(|inner| {
-            inner.last_error = if inner.cart.is_empty() {
-                Some(CartError::CartEmpty)
+            if inner.cart.is_empty() {
+                apply_cart_failure(inner, CartFailure::CartEmpty);
             } else {
-                None
-            };
+                clear_cart_presentation(inner);
+            }
             Vec::new()
         });
     }
@@ -191,11 +206,11 @@ impl CartViewModel {
     pub fn add_product(&self, product_id: i64, quantity: i64) {
         self.store.mutate(|inner| {
             let Some(product) = product(inner, product_id) else {
-                inner.last_error = Some(CartError::ProductNotFound { product_id });
+                apply_cart_failure(inner, CartFailure::ProductNotFound { product_id });
                 return Vec::new();
             };
             if quantity <= 0 {
-                inner.last_error = Some(CartError::QuantityMustBePositive);
+                apply_cart_failure(inner, CartFailure::QuantityMustBePositive);
                 return Vec::new();
             }
             let existing_index = inner
@@ -206,14 +221,17 @@ impl CartViewModel {
                 .map(|index| inner.cart[index].quantity + quantity)
                 .unwrap_or(quantity);
             if requested > product.stock {
-                inner.last_error = Some(CartError::OutOfStock {
-                    product_id,
-                    requested,
-                    available: product.stock,
-                });
+                apply_cart_failure(
+                    inner,
+                    CartFailure::OutOfStock {
+                        product_id,
+                        requested,
+                        available: product.stock,
+                    },
+                );
                 return Vec::new();
             }
-            inner.last_error = None;
+            clear_cart_presentation(inner);
             match existing_index {
                 Some(index) => {
                     inner.cart[index] = cart_item(&product, requested, index);
@@ -238,19 +256,22 @@ impl CartViewModel {
     pub fn set_quantity(&self, product_id: i64, quantity: i64) {
         self.store.mutate(|inner| {
             if quantity <= 0 {
-                inner.last_error = Some(CartError::QuantityMustBePositive);
+                apply_cart_failure(inner, CartFailure::QuantityMustBePositive);
                 return Vec::new();
             }
             let Some(product) = product(inner, product_id) else {
-                inner.last_error = Some(CartError::ProductNotFound { product_id });
+                apply_cart_failure(inner, CartFailure::ProductNotFound { product_id });
                 return Vec::new();
             };
             if quantity > product.stock {
-                inner.last_error = Some(CartError::OutOfStock {
-                    product_id,
-                    requested: quantity,
-                    available: product.stock,
-                });
+                apply_cart_failure(
+                    inner,
+                    CartFailure::OutOfStock {
+                        product_id,
+                        requested: quantity,
+                        available: product.stock,
+                    },
+                );
                 return Vec::new();
             }
             let Some(index) = inner
@@ -258,11 +279,11 @@ impl CartViewModel {
                 .iter()
                 .position(|item| item.product_id == product_id)
             else {
-                inner.last_error = Some(CartError::ProductNotFound { product_id });
+                apply_cart_failure(inner, CartFailure::ProductNotFound { product_id });
                 return Vec::new();
             };
             inner.cart[index] = cart_item(&product, quantity, index);
-            inner.last_error = None;
+            clear_cart_presentation(inner);
             vec![CartDiff::Update {
                 index: index as i64,
                 item: inner.cart[index].clone(),
@@ -277,12 +298,12 @@ impl CartViewModel {
                 .iter()
                 .position(|item| item.product_id == product_id)
             else {
-                inner.last_error = Some(CartError::ProductNotFound { product_id });
+                apply_cart_failure(inner, CartFailure::ProductNotFound { product_id });
                 return Vec::new();
             };
             inner.cart.remove(index);
             normalize_positions(&mut inner.cart);
-            inner.last_error = None;
+            clear_cart_presentation(inner);
             vec![CartDiff::Remove {
                 index: index as i64,
                 product_id,
@@ -295,7 +316,7 @@ impl CartViewModel {
             let old = inner.cart.clone();
             inner.cart.clear();
             inner.coupon_code = None;
-            inner.last_error = None;
+            clear_cart_presentation(inner);
             replace_cart_diffs(&old, &inner.cart)
         });
     }
@@ -324,7 +345,8 @@ impl Store {
                 products: default_products(),
                 cart: Vec::new(),
                 coupon_code: None,
-                last_error: None,
+                checkout_notice: None,
+                stock_warnings: Vec::new(),
             })),
             cart_observers: ObserverSet::new(),
             state_observers: ObserverSet::new(),
@@ -413,9 +435,46 @@ fn shopping_cart_state(inner: &StoreInner) -> ShoppingCartState {
         tax_cents,
         total_cents: taxable_cents + tax_cents,
         item_count: inner.cart.iter().map(|item| item.quantity).sum(),
-        checkout_ready: !inner.cart.is_empty() && inner.last_error.is_none(),
-        last_error: inner.last_error.clone(),
+        checkout_enabled: !inner.cart.is_empty(),
+        checkout_notice: inner.checkout_notice.clone(),
+        stock_warnings: inner.stock_warnings.clone(),
     }
+}
+
+fn clear_cart_presentation(inner: &mut StoreInner) {
+    inner.checkout_notice = None;
+    inner.stock_warnings.clear();
+}
+
+fn apply_cart_failure(inner: &mut StoreInner, failure: CartFailure) {
+    inner.stock_warnings.clear();
+    inner.checkout_notice = Some(match failure {
+        CartFailure::QuantityMustBePositive => CartNotice::Inline {
+            message: "Quantity must be positive.".to_string(),
+        },
+        CartFailure::ProductNotFound { product_id } => CartNotice::Inline {
+            message: format!("Product {product_id} is no longer available."),
+        },
+        CartFailure::OutOfStock {
+            product_id,
+            requested,
+            available,
+        } => {
+            inner.stock_warnings.push(StockWarning {
+                product_id,
+                message: format!("Requested {requested}, only {available} in stock."),
+            });
+            CartNotice::Inline {
+                message: format!("Only {available} left in stock."),
+            }
+        }
+        CartFailure::InvalidCoupon { code } => CartNotice::Toast {
+            message: format!("Coupon {code} is not valid."),
+        },
+        CartFailure::CartEmpty => CartNotice::Inline {
+            message: "Add an item before checkout.".to_string(),
+        },
+    });
 }
 
 fn product(inner: &StoreInner, product_id: i64) -> Option<Product> {
@@ -534,7 +593,9 @@ mod tests {
         assert_eq!(state.item_count, 0);
         assert_eq!(state.subtotal_cents, 0);
         assert_eq!(state.tax_cents, 0);
-        assert!(!state.checkout_ready);
+        assert!(!state.checkout_enabled);
+        assert_eq!(state.checkout_notice, None);
+        assert!(state.stock_warnings.is_empty());
     }
 
     #[test]
@@ -548,7 +609,8 @@ mod tests {
         assert_eq!(state.tax_cents, 107);
         assert_eq!(state.total_cents, 1406);
         assert_eq!(state.item_count, 1);
-        assert!(state.checkout_ready);
+        assert!(state.checkout_enabled);
+        assert_eq!(state.checkout_notice, None);
         assert_eq!(
             observer.diffs().last().unwrap(),
             &vec![CartDiff::Insert {
@@ -596,8 +658,10 @@ mod tests {
         items.add_product(1, 0);
 
         assert_eq!(
-            cart.get_state().last_error,
-            Some(CartError::QuantityMustBePositive)
+            cart.get_state().checkout_notice,
+            Some(CartNotice::Inline {
+                message: "Quantity must be positive.".to_string(),
+            })
         );
         assert!(observer.diffs().is_empty());
     }
@@ -608,15 +672,21 @@ mod tests {
 
         items.add_product(3, 3);
 
+        let state = cart.get_state();
         assert_eq!(
-            cart.get_state().last_error,
-            Some(CartError::OutOfStock {
-                product_id: 3,
-                requested: 3,
-                available: 2,
+            state.checkout_notice,
+            Some(CartNotice::Inline {
+                message: "Only 2 left in stock.".to_string(),
             })
         );
-        assert_eq!(cart.get_state().item_count, 0);
+        assert_eq!(
+            state.stock_warnings,
+            vec![StockWarning {
+                product_id: 3,
+                message: "Requested 3, only 2 in stock.".to_string(),
+            }]
+        );
+        assert_eq!(state.item_count, 0);
         assert!(observer.diffs().is_empty());
     }
 
@@ -628,24 +698,30 @@ mod tests {
 
         items.add_product(999, 1);
         assert_eq!(
-            cart.get_state().last_error,
-            Some(CartError::ProductNotFound { product_id: 999 })
+            cart.get_state().checkout_notice,
+            Some(CartNotice::Inline {
+                message: "Product 999 is no longer available.".to_string(),
+            })
         );
         assert_eq!(cart.get_state().item_count, 1);
         assert_eq!(observer.diffs().len(), diffs_before);
 
         items.set_quantity(999, 2);
         assert_eq!(
-            cart.get_state().last_error,
-            Some(CartError::ProductNotFound { product_id: 999 })
+            cart.get_state().checkout_notice,
+            Some(CartNotice::Inline {
+                message: "Product 999 is no longer available.".to_string(),
+            })
         );
         assert_eq!(cart.get_state().item_count, 1);
         assert_eq!(observer.diffs().len(), diffs_before);
 
         items.remove_product(999);
         assert_eq!(
-            cart.get_state().last_error,
-            Some(CartError::ProductNotFound { product_id: 999 })
+            cart.get_state().checkout_notice,
+            Some(CartNotice::Inline {
+                message: "Product 999 is no longer available.".to_string(),
+            })
         );
         assert_eq!(cart.get_state().item_count, 1);
         assert_eq!(observer.diffs().len(), diffs_before);
@@ -687,8 +763,10 @@ mod tests {
         items.set_quantity(1, 0);
 
         assert_eq!(
-            cart.get_state().last_error,
-            Some(CartError::QuantityMustBePositive)
+            cart.get_state().checkout_notice,
+            Some(CartNotice::Inline {
+                message: "Quantity must be positive.".to_string(),
+            })
         );
         assert_eq!(cart.get_state().item_count, 1);
         assert_eq!(observer.diffs().len(), before);
@@ -724,10 +802,12 @@ mod tests {
         assert_eq!(state.discount_cents, 129);
         assert_eq!(state.tax_cents, 97);
         assert_eq!(state.total_cents, 1267);
+        assert_eq!(state.checkout_notice, None);
+        assert!(state.checkout_enabled);
     }
 
     #[test]
-    fn invalid_coupon_keeps_existing_coupon_and_reports_typed_error() {
+    fn invalid_coupon_keeps_existing_coupon_and_projects_notice() {
         let (cart, items, _observer) = subscribed_cart();
         items.add_product(1, 1);
         cart.apply_coupon(SAVE10.to_string());
@@ -737,13 +817,13 @@ mod tests {
         let state = cart.get_state();
         assert_eq!(state.coupon_code.as_deref(), Some(SAVE10));
         assert_eq!(
-            state.last_error,
-            Some(CartError::InvalidCoupon {
-                code: "BOGUS".to_string(),
+            state.checkout_notice,
+            Some(CartNotice::Toast {
+                message: "Coupon BOGUS is not valid.".to_string(),
             })
         );
         assert_eq!(state.total_cents, 1267);
-        assert!(!state.checkout_ready);
+        assert!(state.checkout_enabled);
     }
 
     #[test]
@@ -767,7 +847,8 @@ mod tests {
         assert_eq!(state.discount_cents, 0);
         assert_eq!(state.tax_cents, 214);
         assert_eq!(state.total_cents, 2812);
-        assert!(state.checkout_ready);
+        assert_eq!(state.checkout_notice, None);
+        assert!(state.checkout_enabled);
     }
 
     #[test]
@@ -782,7 +863,8 @@ mod tests {
         let state = cart.get_state();
         assert_eq!(state.item_count, 0);
         assert_eq!(state.coupon_code, None);
-        assert!(!state.checkout_ready);
+        assert!(!state.checkout_enabled);
+        assert_eq!(state.checkout_notice, None);
         assert_eq!(
             observer.diffs().last().unwrap(),
             &vec![
@@ -799,27 +881,34 @@ mod tests {
     }
 
     #[test]
-    fn checkout_empty_cart_sets_cart_empty_error() {
+    fn checkout_empty_cart_sets_inline_notice() {
         let cart = ShoppingCartViewModel::new();
-
-        cart.checkout();
-
-        assert_eq!(cart.get_state().last_error, Some(CartError::CartEmpty));
-    }
-
-    #[test]
-    fn checkout_with_valid_cart_clears_previous_error() {
-        let cart = ShoppingCartViewModel::new();
-        let items = cart.clone().make_cart_vm();
-        items.add_product(1, 1);
-        cart.apply_coupon("bogus".to_string());
-        assert!(!cart.get_state().checkout_ready);
 
         cart.checkout();
 
         let state = cart.get_state();
-        assert_eq!(state.last_error, None);
-        assert!(state.checkout_ready);
+        assert_eq!(
+            state.checkout_notice,
+            Some(CartNotice::Inline {
+                message: "Add an item before checkout.".to_string(),
+            })
+        );
+        assert!(!state.checkout_enabled);
+    }
+
+    #[test]
+    fn checkout_with_valid_cart_clears_previous_notice() {
+        let cart = ShoppingCartViewModel::new();
+        let items = cart.clone().make_cart_vm();
+        items.add_product(1, 1);
+        cart.apply_coupon("bogus".to_string());
+        assert!(cart.get_state().checkout_enabled);
+
+        cart.checkout();
+
+        let state = cart.get_state();
+        assert_eq!(state.checkout_notice, None);
+        assert!(state.checkout_enabled);
     }
 
     #[test]

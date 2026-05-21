@@ -41,29 +41,31 @@ final class ShoppingCartBridgeTests: XCTestCase {
         updated = await waitFor { kit.cart.items.isEmpty }
         XCTAssertTrue(updated)
         XCTAssertNil(kit.shoppingCart.state.couponCode)
-        XCTAssertFalse(kit.shoppingCart.state.checkoutReady)
+        XCTAssertFalse(kit.shoppingCart.state.checkoutEnabled)
+        XCTAssertNil(kit.shoppingCart.state.checkoutNotice)
     }
 
-    func testTypedErrorsStayRustOwned() async {
+    func testPresentationNoticesStayRustOwned() async {
         let kit = CrossKitShoppingCartBridge()
 
         kit.cart.addProduct(productId: 3, quantity: 3)
-        var updated = await waitFor { kit.shoppingCart.state.lastError != nil }
+        var updated = await waitFor { self.inlineMessage(kit.shoppingCart.state.checkoutNotice) == "Only 2 left in stock." }
         XCTAssertTrue(updated)
-        XCTAssertTrue(String(describing: kit.shoppingCart.state.lastError!).contains("outOfStock"))
+        XCTAssertEqual(kit.shoppingCart.state.stockWarnings.first?.message, "Requested 3, only 2 in stock.")
+        XCTAssertFalse(kit.shoppingCart.state.checkoutEnabled)
 
         kit.cart.addProduct(productId: 1, quantity: 1)
         _ = await waitFor { kit.cart.items.count == 1 }
         kit.shoppingCart.applyCoupon(code: "bogus")
-        updated = await waitFor { String(describing: kit.shoppingCart.state.lastError).contains("invalidCoupon") }
+        updated = await waitFor { self.toastMessage(kit.shoppingCart.state.checkoutNotice) == "Coupon BOGUS is not valid." }
         XCTAssertTrue(updated)
 
         kit.cart.setQuantity(productId: 1, quantity: 0)
-        updated = await waitFor { String(describing: kit.shoppingCart.state.lastError).contains("quantityMustBePositive") }
+        updated = await waitFor { self.inlineMessage(kit.shoppingCart.state.checkoutNotice) == "Quantity must be positive." }
         XCTAssertTrue(updated)
 
         kit.cart.addProduct(productId: 999, quantity: 1)
-        updated = await waitFor { String(describing: kit.shoppingCart.state.lastError).contains("productNotFound") }
+        updated = await waitFor { self.inlineMessage(kit.shoppingCart.state.checkoutNotice) == "Product 999 is no longer available." }
         XCTAssertTrue(updated)
         XCTAssertEqual(kit.shoppingCart.state.itemCount, 1)
     }
@@ -82,13 +84,15 @@ final class ShoppingCartBridgeTests: XCTestCase {
         XCTAssertEqual(kit.shoppingCart.state.totalCents, 2532)
 
         kit.shoppingCart.applyCoupon(code: "bogus")
-        updated = await waitFor { kit.shoppingCart.state.checkoutReady == false }
+        updated = await waitFor { self.toastMessage(kit.shoppingCart.state.checkoutNotice) == "Coupon BOGUS is not valid." }
         XCTAssertTrue(updated)
+        XCTAssertTrue(kit.shoppingCart.state.checkoutEnabled)
 
         kit.shoppingCart.checkout()
-        updated = await waitFor { kit.shoppingCart.state.checkoutReady == true }
+        updated = await waitFor { kit.shoppingCart.state.checkoutNotice == nil }
         XCTAssertTrue(updated)
-        XCTAssertNil(kit.shoppingCart.state.lastError)
+        XCTAssertTrue(kit.shoppingCart.state.checkoutEnabled)
+        XCTAssertNil(kit.shoppingCart.state.checkoutNotice)
     }
 
     func testRootContainerForwardsCartChanges() async {
@@ -113,5 +117,21 @@ final class ShoppingCartBridgeTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
         return condition()
+    }
+
+    private func inlineMessage(_ notice: CartNotice?) -> String? {
+        guard let notice else { return nil }
+        if case let .inline(message) = notice {
+            return message
+        }
+        return nil
+    }
+
+    private func toastMessage(_ notice: CartNotice?) -> String? {
+        guard let notice else { return nil }
+        if case let .toast(message) = notice {
+            return message
+        }
+        return nil
     }
 }

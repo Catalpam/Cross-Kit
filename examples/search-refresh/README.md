@@ -5,14 +5,14 @@ and Android libraries. It intentionally does not expose Rust `async fn`, Swift
 `async throws`, or Kotlin `suspend` APIs.
 
 - Rust owns `SearchViewModel`, query validation, loading/progress state,
-  cancellation, typed errors, fake result generation, stale-result protection,
-  observer subscription, and metadata.
+  cancellation, presentation notices, fake result generation, stale-result
+  protection, observer subscription, and metadata.
 - iOS uses `CrossKitSearchRefreshBridge()` and renders `kit.search.state`.
 - Android uses `rememberCrossKitSearchRefreshBridge()` and renders
   `kit.search.state`.
 - Platform code only displays state and invokes `updateQuery`, `submit`, `tick`,
   and `cancel`; it does not decide empty-query rules, loading transitions,
-  network failure, cancellation state, or result contents.
+  network failure, cancellation state, retry affordances, or result contents.
 
 Run the shared tests and metadata binary:
 

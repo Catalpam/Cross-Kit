@@ -8,8 +8,8 @@ struct ContentView: View {
     @StateObject private var kit = CrossKitShoppingCartBridge()
 
     private var state: ShoppingCartState {
-        // Totals, stock errors, coupon state, and checkout readiness are derived
-        // in Rust so iOS and Android render the same business rules.
+        // Totals, stock warnings, coupon state, and checkout affordances are
+        // derived in Rust so iOS and Android render the same business rules.
         kit.shoppingCart.state
     }
 
@@ -22,12 +22,8 @@ struct ContentView: View {
             products
             cartItems
             actions
-            if let error = state.lastError {
-                Text(String(describing: error))
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .accessibilityIdentifier("cart.error")
-            }
+            notice
+            stockWarnings
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding()
@@ -48,7 +44,7 @@ struct ContentView: View {
                     .accessibilityIdentifier("cart.tax")
                 Text("Total \(money(state.totalCents))")
                     .accessibilityIdentifier("cart.total")
-                Text(state.checkoutReady ? "Ready" : "Not ready")
+                Text(state.checkoutEnabled ? "Ready" : "Not ready")
                     .accessibilityIdentifier("cart.ready")
             }
         }
@@ -107,6 +103,7 @@ struct ContentView: View {
             Button("Clear coupon") { kit.shoppingCart.clearCoupon() }
                 .accessibilityIdentifier("coupon.clear")
             Button("Checkout") { kit.shoppingCart.checkout() }
+                .disabled(!state.checkoutEnabled)
                 .accessibilityIdentifier("cart.checkout")
             Button("Clear cart") { kit.cart.clearCart() }
                 .accessibilityIdentifier("cart.clear")
@@ -114,8 +111,51 @@ struct ContentView: View {
         .buttonStyle(.borderedProminent)
     }
 
+    @ViewBuilder
+    private var notice: some View {
+        if let notice = state.checkoutNotice {
+            Text(noticeText(notice))
+                .font(.caption)
+                .foregroundStyle(noticeColor(notice))
+                .accessibilityIdentifier("cart.notice")
+        }
+    }
+
+    private var stockWarnings: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(state.stockWarnings, id: \.productId) { warning in
+                Text(warning.message)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("cart.stock.warning.\(warning.productId)")
+            }
+        }
+    }
+
     private func money(_ cents: Int64) -> String {
         String(format: "$%lld.%02lld", cents / 100, abs(cents % 100))
+    }
+
+    private func noticeText(_ notice: CartNotice) -> String {
+        switch notice {
+        case let .inline(message):
+            return message
+        case let .toast(message):
+            return message
+        case let .dialog(title, message):
+            return "\(title): \(message)"
+        }
+    }
+
+    private func noticeColor(_ notice: CartNotice) -> Color {
+        switch notice {
+        case .inline:
+            return .red
+        case .toast:
+            return .orange
+        case .dialog:
+            return .blue
+        }
     }
 }
 

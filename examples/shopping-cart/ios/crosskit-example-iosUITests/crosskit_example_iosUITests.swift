@@ -28,10 +28,16 @@ final class crosskit_example_iosUITests: XCTestCase {
         XCTAssertTrue(waitForLabel("Total $25.32", id: "cart.total", in: app))
 
         app.buttons["coupon.bad"].tap()
-        XCTAssertTrue(waitForLabelContaining("invalidCoupon", id: "cart.error", in: app))
+        XCTAssertTrue(waitForLabel("Coupon BOGUS is not valid.", id: "cart.notice", in: app))
+        XCTAssertTrue(waitForLabel("Ready", id: "cart.ready", in: app))
+        XCTAssertTrue(app.buttons["cart.checkout"].isEnabled)
+
+        app.buttons["cart.checkout"].tap()
+        XCTAssertTrue(waitForMissing(id: "cart.notice", in: app))
 
         app.buttons["cart.more.1"].tap()
         XCTAssertTrue(waitForLabel("Items 3", id: "cart.items.count", in: app))
+        XCTAssertTrue(waitForLabel("Ready", id: "cart.ready", in: app))
 
         app.buttons["cart.remove.1"].tap()
         XCTAssertTrue(waitForLabel("Items 0", id: "cart.items.count", in: app))
@@ -40,7 +46,8 @@ final class crosskit_example_iosUITests: XCTestCase {
         app.buttons["product.add.3"].tap()
         app.buttons["product.add.3"].tap()
         app.buttons["product.add.3"].tap()
-        XCTAssertTrue(waitForLabelContaining("outOfStock", id: "cart.error", in: app))
+        XCTAssertTrue(waitForLabel("Only 2 left in stock.", id: "cart.notice", in: app))
+        XCTAssertTrue(waitForLabel("Requested 3, only 2 in stock.", id: "cart.stock.warning.3", in: app))
     }
 
     @MainActor
@@ -74,5 +81,18 @@ final class crosskit_example_iosUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.05))
         }
         return element.exists && element.label.contains(fragment)
+    }
+
+    @MainActor
+    private func waitForMissing(id: String, in app: XCUIApplication) -> Bool {
+        let element = app.staticTexts[id]
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            if !element.exists {
+                return true
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        return !element.exists
     }
 }
