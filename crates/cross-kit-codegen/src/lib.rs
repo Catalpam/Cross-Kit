@@ -504,8 +504,10 @@ fn generate_state_bridge(metadata: &VmMetadata) -> String {
     let observer_method = to_swift_method_name(&observer.method);
 
     let mut methods = String::new();
+    let mut raw_arc_methods = String::new();
     for method in filtered_methods(metadata) {
         methods.push_str(&format_swift_method(method));
+        raw_arc_methods.push_str(&format_swift_raw_arc_method(method));
     }
 
     let observer_proxy = format!(
@@ -569,7 +571,10 @@ public final class {bridge}: ObservableObject, {observer} {{
 {observer_id_decl}
 
     {ctor_sig} {{
-        let vm = {ctor_call}
+        self.init(vm: {ctor_call})
+    }}
+
+    internal init(vm: {vm_type}Protocol) {{
         self.vm = vm
         self.state = vm.getState()
         let observer = ObserverProxy(owner: self)
@@ -578,11 +583,16 @@ public final class {bridge}: ObservableObject, {observer} {{
     }}
 
 {methods}
+{raw_arc_methods}
+    internal static func __crossKitFromVm(_ vm: {vm_type}Protocol) -> {bridge} {{
+        {bridge}(vm: vm)
+    }}
+
     public func {observer_method}(state: {state_type}) {{
         self.state = state
     }}
 
-    {observer_id_unsubscribe}
+{observer_id_unsubscribe}
 }}
 "#,
         bridge = metadata.bridge_name,
@@ -593,6 +603,7 @@ public final class {bridge}: ObservableObject, {observer} {{
         ctor_sig = ctor_sig,
         ctor_call = ctor_call,
         methods = indent(&methods, 4),
+        raw_arc_methods = indent_optional(&raw_arc_methods, 4),
         observer_proxy = observer_proxy.trim_end(),
         observer_id_decl = indent_optional(&observer_id_decl, 4),
         observer_id_assign = observer_id_assign,
@@ -611,8 +622,10 @@ fn generate_list_bridge(metadata: &VmMetadata) -> String {
     let observer_method = to_swift_method_name(&observer.method);
 
     let mut methods = String::new();
+    let mut raw_arc_methods = String::new();
     for method in filtered_methods(metadata) {
         methods.push_str(&format_swift_method(method));
+        raw_arc_methods.push_str(&format_swift_raw_arc_method(method));
     }
 
     let observer_proxy = format!(
@@ -677,7 +690,10 @@ public final class {bridge}: ObservableObject, {observer} {{
 {observer_id_decl}
 
     {ctor_sig} {{
-        let vm = {ctor_call}
+        self.init(vm: {ctor_call})
+    }}
+
+    internal init(vm: {vm_type}Protocol) {{
         self.vm = vm
         let observer = ObserverProxy(owner: self)
         self.observer = observer
@@ -685,6 +701,11 @@ public final class {bridge}: ObservableObject, {observer} {{
     }}
 
 {methods}
+{raw_arc_methods}
+    internal static func __crossKitFromVm(_ vm: {vm_type}Protocol) -> {bridge} {{
+        {bridge}(vm: vm)
+    }}
+
     public func {observer_method}(diffs: [{diff_type}]) {{
         for diff in diffs {{
             switch diff {{
@@ -717,7 +738,7 @@ public final class {bridge}: ObservableObject, {observer} {{
         return idx
     }}
 
-    {observer_id_unsubscribe}
+{observer_id_unsubscribe}
 }}
 "#,
         bridge = metadata.bridge_name,
@@ -729,6 +750,7 @@ public final class {bridge}: ObservableObject, {observer} {{
         ctor_sig = ctor_sig,
         ctor_call = ctor_call,
         methods = indent(&methods, 4),
+        raw_arc_methods = indent_optional(&raw_arc_methods, 4),
         observer_proxy = observer_proxy.trim_end(),
         observer_id_decl = indent_optional(&observer_id_decl, 4),
         observer_id_assign = observer_id_assign,
@@ -927,9 +949,7 @@ fn filtered_methods(metadata: &VmMetadata) -> Vec<&MethodMetadata> {
     metadata
         .methods
         .iter()
-        .filter(|method| method.name != "subscribe" && method.name != "new")
-        .filter(|method| method.name != "unsubscribe")
-        .filter(|method| method.name != "get_state")
+        .filter(|method| !is_bridge_internal_method(metadata, method))
         .collect()
 }
 
@@ -937,10 +957,19 @@ fn filtered_kotlin_methods(metadata: &VmMetadata) -> Vec<&MethodMetadata> {
     metadata
         .methods
         .iter()
-        .filter(|method| method.name != "subscribe" && method.name != "new")
-        .filter(|method| method.name != "unsubscribe")
-        .filter(|method| method.name != "get_state")
+        .filter(|method| !is_bridge_internal_method(metadata, method))
         .collect()
+}
+
+fn is_bridge_internal_method(metadata: &VmMetadata, method: &MethodMetadata) -> bool {
+    matches!(
+        method.name.as_str(),
+        "new" | "subscribe" | "unsubscribe" | "get_state"
+    ) || method.name.starts_with("__cross_kit_")
+        || metadata
+            .observer
+            .as_ref()
+            .is_some_and(|observer| observer.method == method.name)
 }
 
 fn constructor_method(metadata: &VmMetadata) -> Option<&MethodMetadata> {
@@ -951,18 +980,22 @@ fn constructor_or_factory(metadata: &VmMetadata) -> (String, String) {
     if let Some(factory) = &metadata.factory {
         let method = to_swift_method_name(&factory.method);
         return (
-            format!("public init(app: {})", factory.bridge_name),
-            format!("app.{method}()"),
+            format!("public convenience init(app: {})", factory.bridge_name),
+            format!("app.{}()", swift_raw_arc_method_name(&method)),
         );
     }
     if let Some(ctor) = constructor_method(metadata) {
         return (
-            format_swift_signature(ctor, true),
+            format_swift_signature(ctor, true).replacen(
+                "public init",
+                "public convenience init",
+                1,
+            ),
             format_swift_ctor_call(ctor, &metadata.rust_type),
         );
     }
     (
-        "public init()".to_string(),
+        "public convenience init()".to_string(),
         format!("{}()", metadata.rust_type),
     )
 }
@@ -1044,24 +1077,78 @@ fn format_swift_method(method: &MethodMetadata) -> String {
         })
         .collect::<Vec<_>>()
         .join(", ");
-    let ret_type = map_type_to_swift(&method.return_type);
+    let arc_return = owned_arc_return_type(&method.return_type);
+    let ret_type = arc_return
+        .map(swift_bridge_name_for_rust_type)
+        .unwrap_or_else(|| map_type_to_swift(&method.return_type));
     let ret_sig = if ret_type == "Void" {
         "".to_string()
     } else {
         format!(" -> {ret_type}")
     };
-    let call = if ret_type == "Void" {
+    let call = if let Some(rust_type) = arc_return {
+        let bridge = swift_bridge_name_for_rust_type(rust_type);
+        format!("return {bridge}.__crossKitFromVm(vm.{swift_name}({call_args}))")
+    } else if ret_type == "Void" {
         format!("vm.{}({})", swift_name, call_args)
     } else {
         format!("return vm.{}({})", swift_name, call_args)
     };
     format!(
-        "/// Calls the Rust VM `{rust_name}` action.\npublic func {swift_name}({args}){ret_sig} {{\n        {call}\n    }}\n\n",
+        "/// Calls the Rust VM `{rust_name}` action.\npublic func {swift_name}({args}){ret_sig} {{\n    {call}\n}}\n\n",
         rust_name = method.name,
         swift_name = swift_name,
         args = args,
         ret_sig = ret_sig,
         call = call
+    )
+}
+
+fn format_swift_raw_arc_method(method: &MethodMetadata) -> String {
+    let Some(rust_type) = owned_arc_return_type(&method.return_type) else {
+        return String::new();
+    };
+    let swift_name = to_swift_method_name(&method.name);
+    let raw_name = swift_raw_arc_method_name(&swift_name);
+    let args = method
+        .args
+        .iter()
+        .map(|arg| {
+            format!(
+                "{}: {}",
+                to_swift_method_name(&arg.name),
+                map_type_to_swift(&arg.rust_type)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let call_args = method
+        .args
+        .iter()
+        .map(|arg| {
+            let label = to_swift_method_name(&arg.name);
+            format!("{label}: {label}")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "internal func {raw_name}({args}) -> {rust_type}Protocol {{\n    return vm.{swift_name}({call_args})\n}}\n\n"
+    )
+}
+
+fn swift_bridge_name_for_rust_type(rust_type: &str) -> String {
+    format!("{rust_type}Bridge")
+}
+
+fn swift_raw_arc_method_name(swift_name: &str) -> String {
+    let mut chars = swift_name.chars();
+    let Some(first) = chars.next() else {
+        return "__crossKitRaw".to_string();
+    };
+    format!(
+        "__crossKitRaw{}{}",
+        first.to_ascii_uppercase(),
+        chars.collect::<String>()
     )
 }
 
@@ -1218,7 +1305,7 @@ fn format_kotlin_method(method: &MethodMetadata) -> String {
         format!("return vm.{}({})", kotlin_name, call_args)
     };
     format!(
-        "/** Calls the Rust VM `{rust_name}` action. */\nfun {kotlin_name}({args}): {ret_type} {{\n        {call}\n    }}\n\n",
+        "/** Calls the Rust VM `{rust_name}` action. */\nfun {kotlin_name}({args}): {ret_type} {{\n    {call}\n}}\n\n",
         rust_name = method.name,
         kotlin_name = kotlin_name,
         args = args,
@@ -1680,6 +1767,31 @@ mod tests {
         metadata
     }
 
+    fn internal_probe_method(name: &str) -> MethodMetadata {
+        MethodMetadata {
+            name: name.to_string(),
+            args: Vec::new(),
+            return_type: "unit".to_string(),
+        }
+    }
+
+    fn public_probe_method(name: &str, return_type: &str) -> MethodMetadata {
+        MethodMetadata {
+            name: name.to_string(),
+            args: vec![
+                ArgMetadata {
+                    name: "query_text".to_string(),
+                    rust_type: "String".to_string(),
+                },
+                ArgMetadata {
+                    name: "max_count".to_string(),
+                    rust_type: "i32".to_string(),
+                },
+            ],
+            return_type: return_type.to_string(),
+        }
+    }
+
     fn child_list_metadata() -> VmMetadata {
         let mut metadata = list_metadata();
         metadata.factory = Some(FactoryMetadata {
@@ -1699,21 +1811,35 @@ mod tests {
 
     #[test]
     fn generates_state_bridge_with_factory_and_unsubscribe() {
-        let files = generate_swift_bridge(&state_metadata()).unwrap();
+        let mut metadata = state_metadata();
+        metadata
+            .methods
+            .push(internal_probe_method("__cross_kit_probe"));
+        metadata.methods.push(internal_probe_method("on_state"));
+
+        let files = generate_swift_bridge(&metadata).unwrap();
         let code = &files.files[0].contents;
 
         assert_eq!(files.files[0].path, "CounterViewModelBridge.swift");
         assert!(code.contains("// Generated by cross-kit-codegen."));
         assert!(code.contains("/// SwiftUI-facing bridge for `CounterViewModel`."));
         assert!(code.contains("public final class CounterViewModelBridge"));
-        assert!(code.contains("public init(app: AppViewModelBridge)"));
-        assert!(code.contains("let vm = app.makeCounterVm()"));
+        assert!(code.contains("public convenience init(app: AppViewModelBridge)"));
+        assert!(code.contains("self.init(vm: app.__crossKitRawMakeCounterVm())"));
+        assert!(code.contains("internal init(vm: CounterViewModelProtocol)"));
         assert!(code.contains("private var observerId: Int64?"));
         assert!(code.contains("vm.unsubscribe(id: id)"));
         assert!(code.contains("public func incrementBy(deltaValue: Int32) -> CounterState"));
         assert!(code.contains("/// Calls the Rust VM `increment_by` action."));
         assert!(!code.contains("public func getState"));
         assert!(!code.contains("public func subscribe"));
+        assert!(!code.contains("public func unsubscribe"));
+        assert!(!code.contains("public func __crossKitProbe"));
+        assert!(!code.contains("/// Calls the Rust VM `on_state` action."));
+        assert!(!code.contains("vm.onState("));
+        assert!(!code.contains("\n            vm."));
+        assert!(!code.contains("\n            return vm."));
+        assert!(!code.contains("\n        deinit"));
     }
 
     #[test]
@@ -1731,8 +1857,103 @@ mod tests {
     }
 
     #[test]
+    fn bridge_internal_method_predicate_covers_lifecycle_and_observer_hooks() {
+        let metadata = state_metadata();
+        for name in [
+            "new",
+            "subscribe",
+            "unsubscribe",
+            "get_state",
+            "__cross_kit_probe",
+            "on_state",
+        ] {
+            assert!(
+                is_bridge_internal_method(&metadata, &internal_probe_method(name)),
+                "{name} should be bridge-internal"
+            );
+        }
+        assert!(!is_bridge_internal_method(
+            &metadata,
+            &internal_probe_method("increment_by")
+        ));
+    }
+
+    #[test]
+    fn generated_actions_keep_platform_names_arguments_and_return_values() {
+        let mut metadata = state_metadata();
+        metadata.methods.push(public_probe_method(
+            "update_query_with_limit",
+            "Option<Vec<String>>",
+        ));
+        metadata.methods.push(MethodMetadata {
+            name: "make_preview_vm".to_string(),
+            args: Vec::new(),
+            return_type: "Arc<CounterViewModel>".to_string(),
+        });
+        metadata.methods.push(public_probe_method(
+            "make_preview_vm_for",
+            "Arc<CounterViewModel>",
+        ));
+
+        let swift = generate_swift_bridge_source(&metadata).unwrap();
+        let kotlin = generate_kotlin_bridge_source(&metadata, "com.crosskit.shared").unwrap();
+
+        assert!(swift.contains(
+            "public func updateQueryWithLimit(queryText: String, maxCount: Int32) -> [String]?"
+        ));
+        assert!(
+            swift.contains(
+                "return vm.updateQueryWithLimit(queryText: queryText, maxCount: maxCount)"
+            )
+        );
+        assert!(swift.contains("public func makePreviewVm() -> CounterViewModelBridge"));
+        assert!(
+            swift.contains("return CounterViewModelBridge.__crossKitFromVm(vm.makePreviewVm())")
+        );
+        assert!(
+            swift
+                .contains("internal func __crossKitRawMakePreviewVm() -> CounterViewModelProtocol")
+        );
+        assert!(swift.contains(
+            "public func makePreviewVmFor(queryText: String, maxCount: Int32) -> CounterViewModelBridge"
+        ));
+        assert!(swift.contains(
+            "return CounterViewModelBridge.__crossKitFromVm(vm.makePreviewVmFor(queryText: queryText, maxCount: maxCount))"
+        ));
+        assert!(swift.contains(
+            "internal func __crossKitRawMakePreviewVmFor(queryText: String, maxCount: Int32) -> CounterViewModelProtocol"
+        ));
+        assert!(
+            swift.contains("return vm.makePreviewVmFor(queryText: queryText, maxCount: maxCount)")
+        );
+        assert!(
+            kotlin.contains(
+                "fun updateQueryWithLimit(queryText: String, maxCount: Int): List<String>?"
+            )
+        );
+        assert!(kotlin.contains("return vm.updateQueryWithLimit(queryText, maxCount)"));
+        assert!(kotlin.contains("fun makePreviewVm(): CounterViewModelBridge"));
+        assert!(
+            kotlin.contains("return CounterViewModelBridge.__crossKitFromVm(vm.makePreviewVm())")
+        );
+        assert!(kotlin.contains(
+            "fun makePreviewVmFor(queryText: String, maxCount: Int): CounterViewModelBridge"
+        ));
+        assert!(kotlin.contains(
+            "return CounterViewModelBridge.__crossKitFromVm(vm.makePreviewVmFor(queryText, maxCount))"
+        ));
+        assert_eq!(swift_raw_arc_method_name(""), "__crossKitRaw");
+    }
+
+    #[test]
     fn generates_kotlin_state_bridge_with_main_thread_dispatch_and_close() {
-        let files = generate_kotlin_bridge(&state_metadata(), "com.crosskit.shared").unwrap();
+        let mut metadata = state_metadata();
+        metadata
+            .methods
+            .push(internal_probe_method("__cross_kit_probe"));
+        metadata.methods.push(internal_probe_method("on_state"));
+
+        let files = generate_kotlin_bridge(&metadata, "com.crosskit.shared").unwrap();
         let code = &files.files[0].contents;
 
         assert_eq!(
@@ -1756,6 +1977,14 @@ mod tests {
         );
         assert!(code.contains("fun incrementBy(deltaValue: Int): CounterState"));
         assert!(code.contains("/** Calls the Rust VM `increment_by` action. */"));
+        assert!(!code.contains("fun getState"));
+        assert!(!code.contains("fun subscribe"));
+        assert!(!code.contains("fun unsubscribe"));
+        assert!(!code.contains("fun __crossKitProbe"));
+        assert!(!code.contains("/** Calls the Rust VM `on_state` action. */"));
+        assert!(!code.contains("vm.onState("));
+        assert!(!code.contains("\n            vm."));
+        assert!(!code.contains("\n            return vm."));
         assert!(code.contains("fun close()"));
         assert!(code.contains("private var closed = false"));
         assert!(code.contains("if (closed) return"));
@@ -2315,6 +2544,10 @@ mod tests {
             map_type_to_swift("Arc<dyn CounterObserver>"),
             "CounterObserver"
         );
+        assert_eq!(
+            map_type_to_swift("std::sync::Arc<dyn CounterObserver>"),
+            "CounterObserver"
+        );
         assert_eq!(map_type_to_swift("CustomRecord"), "CustomRecord");
     }
 
@@ -2396,8 +2629,8 @@ mod tests {
 
         let code = generate_swift_bridge_source(&metadata).unwrap();
 
-        assert!(code.contains("public init()"));
-        assert!(code.contains("let vm = CounterViewModel()"));
+        assert!(code.contains("public convenience init()"));
+        assert!(code.contains("self.init(vm: CounterViewModel())"));
         assert!(code.contains("vm.subscribe(observer: observer)"));
         assert!(!code.contains("observerId"));
         assert!(!code.contains("deinit"));

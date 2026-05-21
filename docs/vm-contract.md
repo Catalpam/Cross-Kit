@@ -77,6 +77,67 @@ Type strings are Rust type strings from the annotated impl. Generators are
 responsible for mapping primitives, `Arc<T>`, `Option<T>`, `Vec<T>`, records,
 and enums into each platform's native API.
 
+## Platform bridge API
+
+The Rust VM contract is not the same as the public SwiftUI/Compose API.
+Some Rust methods are infrastructure hooks consumed by generated bridge code:
+
+```rust
+impl CounterViewModel {
+    pub fn new(initial: i32) -> Arc<Self>;
+    pub fn get_state(&self) -> CounterState;
+    pub fn subscribe(&self, observer: Arc<dyn CounterObserver>) -> SubscriptionId;
+    pub fn unsubscribe(&self, id: SubscriptionId);
+}
+```
+
+Generated platform bridges use those hooks to create the VM, initialize
+observable state, attach observers, and release subscriptions. They must not be
+generated as public Swift/Kotlin business methods. Generators currently treat
+these Rust method names as bridge-internal:
+
+- `new`
+- `subscribe`
+- `unsubscribe`
+- `get_state`
+- names starting with `__cross_kit_`
+- the configured observer callback name, such as `on_state` or `on_diffs`
+
+All other public VM methods are generated as platform actions:
+
+```rust
+impl CounterViewModel {
+    pub fn increment_by(&self, delta_value: i32) -> CounterState;
+    pub fn reset(&self);
+}
+```
+
+Swift:
+
+```swift
+bridge.incrementBy(deltaValue: 1)
+bridge.reset()
+let state = bridge.state
+```
+
+Kotlin:
+
+```kotlin
+bridge.incrementBy(deltaValue = 1)
+bridge.reset()
+val state = bridge.state
+```
+
+Actions should normally update Rust state and let the platform observe
+`state`/`items`. Returning a value is allowed for synchronous command results or
+factory-like actions, but it should not be used to bypass observation for normal
+UI updates.
+
+If an action returns `Arc<ChildViewModel>`, platform generators should wrap it
+in the corresponding child bridge instead of exposing the raw Rust VM. The raw
+VM factory remains an internal generated helper used only when constructing
+child bridges from a root container.
+
 ## Validation
 
 `cross-kit-core` owns the Rust model and validation rules:

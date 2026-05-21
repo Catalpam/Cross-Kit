@@ -720,6 +720,32 @@ mod tests {
                     args: Vec::new(),
                     return_type: "CounterState".to_string(),
                 },
+                cross_kit_core::MethodMetadata {
+                    name: "unsubscribe".to_string(),
+                    args: vec![cross_kit_core::ArgMetadata {
+                        name: "id".to_string(),
+                        rust_type: "i64".to_string(),
+                    }],
+                    return_type: "unit".to_string(),
+                },
+                cross_kit_core::MethodMetadata {
+                    name: "__cross_kit_probe".to_string(),
+                    args: Vec::new(),
+                    return_type: "unit".to_string(),
+                },
+                cross_kit_core::MethodMetadata {
+                    name: "on_state".to_string(),
+                    args: Vec::new(),
+                    return_type: "unit".to_string(),
+                },
+                cross_kit_core::MethodMetadata {
+                    name: "increment_by".to_string(),
+                    args: vec![cross_kit_core::ArgMetadata {
+                        name: "delta_value".to_string(),
+                        rust_type: "i32".to_string(),
+                    }],
+                    return_type: "CounterState".to_string(),
+                },
             ],
         };
 
@@ -729,7 +755,17 @@ mod tests {
             .kotlin_dir
             .join("com/crosskit/shared/CounterViewModelBridge.kt");
         assert!(bridge.exists());
-        assert!(fs::read_to_string(bridge).unwrap().contains("vm.close()"));
+        let bridge_code = fs::read_to_string(bridge).unwrap();
+        assert!(bridge_code.contains("vm.close()"));
+        assert!(bridge_code.contains("fun incrementBy(deltaValue: Int): CounterState"));
+        assert!(!bridge_code.contains("fun getState"));
+        assert!(!bridge_code.contains("fun subscribe"));
+        assert!(!bridge_code.contains("fun unsubscribe"));
+        assert!(!bridge_code.contains("fun __crossKitProbe"));
+        assert!(!bridge_code.contains("/** Calls the Rust VM `on_state` action. */"));
+        assert!(!bridge_code.contains("vm.onState("));
+        assert!(!bridge_code.contains("\n            vm."));
+        assert!(!bridge_code.contains("\n            return vm."));
         let _ = fs::remove_dir_all(&temp);
     }
 
