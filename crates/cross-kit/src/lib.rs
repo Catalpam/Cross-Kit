@@ -150,6 +150,39 @@ impl<O: ?Sized> ObserverSet<O> {
     }
 }
 
+/// Diff enum adapter for replaying an existing list as insert operations.
+///
+/// Diff-list bridges start with an empty platform-side collection and converge
+/// by applying diffs emitted from Rust. Types that represent list diffs can
+/// implement this trait to let common replay code build the initial insert
+/// batch without repeating `enumerate().map(...)` in every VM.
+pub trait InsertDiff<Item>: Clone {
+    /// Creates the diff that inserts `item` at `index`.
+    ///
+    /// The index uses `i64` because UniFFI exports signed integer indexes more
+    /// consistently across Swift and Kotlin generated bindings.
+    fn insert(index: i64, item: Item) -> Self;
+}
+
+/// Converts a list snapshot into insert diffs that rebuild the same list.
+///
+/// The returned diffs preserve item order and assign zero-based indexes. Use
+/// this for initial diff-list subscription replay: generated bridges maintain
+/// their own empty platform-side list, then apply this batch before processing
+/// live updates.
+pub fn items_as_insert_diffs<Item, Diff>(items: &[Item]) -> Vec<Diff>
+where
+    Item: Clone,
+    Diff: InsertDiff<Item>,
+{
+    items
+        .iter()
+        .cloned()
+        .enumerate()
+        .map(|(index, item)| Diff::insert(index as i64, item))
+        .collect()
+}
+
 /// Shared state and observer runtime for simple state-driven VMs.
 ///
 /// `StateStore` is intended for Rust SDK code that follows Cross-Kit's state
@@ -655,7 +688,9 @@ macro_rules! metadata_main {
 
 #[cfg(test)]
 mod tests {
-    use super::{CkVmMetadata, ObserverSet, StateStore, metadata_json};
+    use super::{
+        CkVmMetadata, InsertDiff, ObserverSet, StateStore, items_as_insert_diffs, metadata_json,
+    };
     use std::sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
@@ -685,6 +720,61 @@ mod tests {
         assert_eq!(parsed.as_array().unwrap().len(), 2);
         assert_eq!(parsed[0]["name"], "first");
         assert_eq!(parsed[1]["name"], "second");
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct TestItem {
+        id: i64,
+        label: String,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum TestDiff {
+        Insert { index: i64, item: TestItem },
+    }
+
+    impl InsertDiff<TestItem> for TestDiff {
+        fn insert(index: i64, item: TestItem) -> Self {
+            Self::Insert { index, item }
+        }
+    }
+
+    #[test]
+    fn items_as_insert_diffs_preserves_order_indexes_and_items() {
+        let items = vec![
+            TestItem {
+                id: 10,
+                label: "first".to_string(),
+            },
+            TestItem {
+                id: 20,
+                label: "second".to_string(),
+            },
+        ];
+
+        assert_eq!(
+            items_as_insert_diffs::<_, TestDiff>(&items),
+            vec![
+                TestDiff::Insert {
+                    index: 0,
+                    item: items[0].clone()
+                },
+                TestDiff::Insert {
+                    index: 1,
+                    item: items[1].clone()
+                }
+            ]
+        );
+        assert_eq!(items[0].label, "first");
+        assert_eq!(items[1].label, "second");
+    }
+
+    #[test]
+    fn items_as_insert_diffs_returns_empty_batch_for_empty_snapshot() {
+        let items: Vec<TestItem> = Vec::new();
+        let diffs = items_as_insert_diffs::<_, TestDiff>(&items);
+
+        assert!(diffs.is_empty());
     }
 
     mod generated_metadata_binary {

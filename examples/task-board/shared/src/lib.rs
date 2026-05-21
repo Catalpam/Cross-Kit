@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 pub use cross_kit::CkVmMetadata;
-use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
+use cross_kit::{InsertDiff, ObserverSet, SubscriptionId, items_as_insert_diffs, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
@@ -29,6 +29,12 @@ pub enum TaskDiff {
     Update { index: i64, item: TaskItem },
     Remove { index: i64, id: i64 },
     Move { from: i64, to: i64 },
+}
+
+impl InsertDiff<TaskItem> for TaskDiff {
+    fn insert(index: i64, item: TaskItem) -> Self {
+        Self::Insert { index, item }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -261,19 +267,11 @@ impl TaskListViewModel {
     pub fn subscribe(&self, observer: Arc<dyn TaskListObserver>) -> SubscriptionId {
         let visible = self.store.visible_tasks();
         let id = self.store.list_observers.subscribe(observer.clone());
-        if !visible.is_empty() {
+        let replay = items_as_insert_diffs::<_, TaskDiff>(&visible);
+        if !replay.is_empty() {
             // A list bridge starts empty, then applies this insert replay to
             // reach the current Rust list before handling live diffs.
-            observer.on_diffs(
-                visible
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, item)| TaskDiff::Insert {
-                        index: index as i64,
-                        item,
-                    })
-                    .collect(),
-            );
+            observer.on_diffs(replay);
         }
         id
     }
@@ -739,8 +737,86 @@ mod tests {
 
         let diffs = observer.diffs();
         assert_eq!(diffs.len(), 1);
-        assert_eq!(diffs[0].len(), 3);
-        assert!(matches!(diffs[0][0], TaskDiff::Insert { index: 0, .. }));
+        assert_eq!(
+            diffs[0],
+            vec![
+                TaskDiff::Insert {
+                    index: 0,
+                    item: TaskItem {
+                        id: 1,
+                        title: "Plan".to_string(),
+                        done: false,
+                        position: 0,
+                    },
+                },
+                TaskDiff::Insert {
+                    index: 1,
+                    item: TaskItem {
+                        id: 2,
+                        title: "Build".to_string(),
+                        done: false,
+                        position: 1,
+                    },
+                },
+                TaskDiff::Insert {
+                    index: 2,
+                    item: TaskItem {
+                        id: 3,
+                        title: "Review".to_string(),
+                        done: false,
+                        position: 2,
+                    },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn subscribe_replays_only_filtered_visible_tasks() {
+        let board = TaskBoardViewModel::new();
+        let list = board.clone().make_task_list_vm();
+        list.add_sample_batch();
+        list.toggle_done(2);
+        board.set_filter(TaskFilter::Open);
+        let observer = RecordingListObserver::new();
+
+        list.subscribe(observer.clone());
+
+        let diffs = observer.diffs();
+        assert_eq!(
+            diffs[0],
+            vec![
+                TaskDiff::Insert {
+                    index: 0,
+                    item: TaskItem {
+                        id: 1,
+                        title: "Plan".to_string(),
+                        done: false,
+                        position: 0,
+                    },
+                },
+                TaskDiff::Insert {
+                    index: 1,
+                    item: TaskItem {
+                        id: 3,
+                        title: "Review".to_string(),
+                        done: false,
+                        position: 2,
+                    },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn subscribe_empty_visible_list_does_not_emit_empty_replay_batch() {
+        let board = TaskBoardViewModel::new();
+        let list = board.clone().make_task_list_vm();
+        let observer = RecordingListObserver::new();
+
+        list.subscribe(observer.clone());
+
+        assert!(observer.diffs().is_empty());
     }
 
     #[test]

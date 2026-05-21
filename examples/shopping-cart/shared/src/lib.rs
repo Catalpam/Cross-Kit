@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 pub use cross_kit::CkVmMetadata;
-use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
+use cross_kit::{InsertDiff, ObserverSet, SubscriptionId, items_as_insert_diffs, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
@@ -35,6 +35,12 @@ pub enum CartDiff {
     Update { index: i64, item: CartItem },
     Remove { index: i64, product_id: i64 },
     Move { from: i64, to: i64 },
+}
+
+impl InsertDiff<CartItem> for CartDiff {
+    fn insert(index: i64, item: CartItem) -> Self {
+        Self::Insert { index, item }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -297,18 +303,11 @@ impl CartViewModel {
     pub fn subscribe(&self, observer: Arc<dyn CartObserver>) -> SubscriptionId {
         let cart = self.store.cart_items();
         let id = self.store.cart_observers.subscribe(observer.clone());
-        if !cart.is_empty() {
+        let replay = items_as_insert_diffs::<_, CartDiff>(&cart);
+        if !replay.is_empty() {
             // Initial cart contents are sent as inserts so a newly created list
             // bridge has the same state as Rust before live updates arrive.
-            observer.on_diffs(
-                cart.into_iter()
-                    .enumerate()
-                    .map(|(index, item)| CartDiff::Insert {
-                        index: index as i64,
-                        item,
-                    })
-                    .collect(),
-            );
+            observer.on_diffs(replay);
         }
         id
     }
@@ -828,15 +827,81 @@ mod tests {
         let cart = ShoppingCartViewModel::new();
         let items = cart.clone().make_cart_vm();
         items.add_product(1, 1);
+        items.add_product(2, 2);
         let observer = RecordingCartObserver::new();
 
         let id = items.subscribe(observer.clone());
         items.unsubscribe(id);
-        items.add_product(2, 1);
+        items.add_product(3, 1);
 
         let diffs = observer.diffs();
         assert_eq!(diffs.len(), 1);
-        assert!(matches!(diffs[0][0], CartDiff::Insert { index: 0, .. }));
+        assert_eq!(
+            diffs[0],
+            vec![
+                CartDiff::Insert {
+                    index: 0,
+                    item: CartItem {
+                        product_id: 1,
+                        name: "Coffee".to_string(),
+                        unit_price_cents: 1299,
+                        quantity: 1,
+                        line_total_cents: 1299,
+                        position: 0,
+                    },
+                },
+                CartDiff::Insert {
+                    index: 1,
+                    item: CartItem {
+                        product_id: 2,
+                        name: "Tea".to_string(),
+                        unit_price_cents: 499,
+                        quantity: 2,
+                        line_total_cents: 998,
+                        position: 1,
+                    },
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn cart_subscribe_empty_cart_does_not_emit_empty_replay_batch() {
+        let cart = ShoppingCartViewModel::new();
+        let items = cart.clone().make_cart_vm();
+        let observer = RecordingCartObserver::new();
+
+        items.subscribe(observer.clone());
+
+        assert!(observer.diffs().is_empty());
+    }
+
+    #[test]
+    fn cart_subscribe_replays_current_snapshot_not_history() {
+        let cart = ShoppingCartViewModel::new();
+        let items = cart.clone().make_cart_vm();
+        items.add_product(1, 1);
+        items.add_product(1, 2);
+        items.add_product(2, 1);
+        items.remove_product(1);
+        let observer = RecordingCartObserver::new();
+
+        items.subscribe(observer.clone());
+
+        assert_eq!(
+            observer.diffs(),
+            vec![vec![CartDiff::Insert {
+                index: 0,
+                item: CartItem {
+                    product_id: 2,
+                    name: "Tea".to_string(),
+                    unit_price_cents: 499,
+                    quantity: 1,
+                    line_total_cents: 499,
+                    position: 0,
+                },
+            }]]
+        );
     }
 
     #[test]
