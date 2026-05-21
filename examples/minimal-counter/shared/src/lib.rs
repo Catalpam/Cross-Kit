@@ -1,7 +1,10 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+#[cfg(test)]
+use std::sync::Mutex;
 
 pub use cross_kit::CkVmMetadata;
-use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
+use cross_kit::{StateStore, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
@@ -23,8 +26,7 @@ pub trait CounterObserver: Send + Sync {
 
 #[derive(uniffi::Object)]
 pub struct CounterViewModel {
-    state: Mutex<CounterState>,
-    observers: ObserverSet<dyn CounterObserver>,
+    state: StateStore<CounterState, dyn CounterObserver>,
 }
 
 // `vm_bridge(mode = "state")` is the Cross-Kit contract for a state VM. The
@@ -36,8 +38,7 @@ impl CounterViewModel {
     #[uniffi::constructor]
     pub fn new(initial: i32) -> Arc<Self> {
         Arc::new(Self {
-            state: Mutex::new(CounterState { value: initial }),
-            observers: ObserverSet::new(),
+            state: StateStore::new(CounterState { value: initial }),
         })
     }
 
@@ -54,60 +55,34 @@ impl CounterViewModel {
     }
 
     pub fn get_state(&self) -> CounterState {
-        self.locked_state()
+        self.state.read()
     }
 
     pub fn subscribe(&self, observer: Arc<dyn CounterObserver>) -> SubscriptionId {
-        let state = self.locked_state();
-        let subscription_id = self.observers.subscribe(observer.clone());
         // New subscribers receive the current state immediately so generated
         // bridges are usable right after construction without a separate load.
-        observer.on_state(state);
-        subscription_id
+        self.state
+            .subscribe_replay(observer, |observer, state| observer.on_state(state))
     }
 
     pub fn unsubscribe(&self, id: SubscriptionId) {
-        self.observers.unsubscribe(id);
+        self.state.unsubscribe(id);
     }
 }
 
 impl CounterViewModel {
     fn update_by(&self, delta: i32) {
-        let state = {
-            let mut state = self
-                .state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            state.value += delta;
-            state.clone()
-        };
-        self.notify(state);
+        self.state.update_notify(
+            |state| state.value += delta,
+            |observer, state| observer.on_state(state),
+        );
     }
 
     fn set_value(&self, value: i32) {
-        let state = {
-            let mut state = self
-                .state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            state.value = value;
-            state.clone()
-        };
-        self.notify(state);
-    }
-
-    fn locked_state(&self) -> CounterState {
-        self.state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
-    }
-
-    fn notify(&self, state: CounterState) {
-        let observers = self.observers.snapshot();
-        ObserverSet::notify_snapshot(&observers, |observer| {
-            observer.on_state(state.clone());
-        });
+        self.state.update_notify(
+            |state| state.value = value,
+            |observer, state| observer.on_state(state),
+        );
     }
 }
 
@@ -202,5 +177,80 @@ mod tests {
             observer.states(),
             vec![CounterState { value: 1 }, CounterState { value: 2 }]
         );
+    }
+
+    struct ReentrantObserver {
+        vm: Mutex<Option<Arc<CounterViewModel>>>,
+        states: Mutex<Vec<CounterState>>,
+        triggered: Mutex<bool>,
+    }
+
+    impl ReentrantObserver {
+        fn new() -> Arc<Self> {
+            Arc::new(Self {
+                vm: Mutex::new(None),
+                states: Mutex::new(Vec::new()),
+                triggered: Mutex::new(false),
+            })
+        }
+
+        fn attach(&self, vm: Arc<CounterViewModel>) {
+            *self
+                .vm
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(vm);
+        }
+
+        fn states(&self) -> Vec<CounterState> {
+            self.states
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .clone()
+        }
+    }
+
+    impl CounterObserver for ReentrantObserver {
+        fn on_state(&self, state: CounterState) {
+            self.states
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .push(state);
+            let should_reenter = {
+                let mut triggered = self
+                    .triggered
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let should_reenter = !*triggered;
+                if should_reenter {
+                    *triggered = true;
+                }
+                should_reenter
+            };
+            if should_reenter {
+                if let Some(vm) = self
+                    .vm
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .clone()
+                {
+                    vm.increment();
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn observer_callbacks_can_reenter_view_model_actions() {
+        let vm = CounterViewModel::new(0);
+        let observer = ReentrantObserver::new();
+        observer.attach(vm.clone());
+
+        vm.subscribe(observer.clone());
+
+        assert_eq!(
+            observer.states(),
+            vec![CounterState { value: 0 }, CounterState { value: 1 }]
+        );
+        assert_eq!(vm.get_state(), CounterState { value: 1 });
     }
 }

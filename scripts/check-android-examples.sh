@@ -40,6 +40,12 @@ if [[ -z "${ANDROID_SERIAL:-}" ]]; then
   export ANDROID_SERIAL="$selected_device"
 fi
 
+if ! adb devices | awk 'NR > 1 && $2 == "device" { print $1 }' | grep -Fxq "$ANDROID_SERIAL"; then
+  echo "selected Android device ($ANDROID_SERIAL) is not online" >&2
+  adb devices -l >&2
+  exit 1
+fi
+
 device_model="$(adb -s "$ANDROID_SERIAL" shell getprop ro.product.model 2>/dev/null | tr -d '\r')"
 if [[ "$device_model" == *ATD* ]]; then
   echo "selected Android device is an ATD model ($device_model); use a visible emulator/device for screenshot gates" >&2
@@ -251,9 +257,16 @@ for example in "${examples[@]}"; do
   fi
   sleep 2
 
-  if adb logcat -d | rg -i \
+  app_pid="$(adb shell pidof "$APP_ID" 2>/dev/null | tr -d '\r' | awk '{ print $1 }')"
+  if [[ -z "$app_pid" ]]; then
+    echo "$example: app process is not running after launch" >&2
+    adb shell ps -A | grep -F "$APP_ID" >&2 || true
+    exit 1
+  fi
+
+  if adb logcat -d --pid="$app_pid" | rg -i \
     "FATAL EXCEPTION|AndroidRuntime|UnsatisfiedLinkError|UnexpectedUniFFICallbackError|NullPointerException"; then
-    echo "$example: launch produced a fatal Android log" >&2
+    echo "$example: launch produced a fatal Android log in app process $app_pid" >&2
     exit 1
   fi
 

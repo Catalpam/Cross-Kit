@@ -6,7 +6,8 @@
 #![warn(missing_docs)]
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread::ThreadId;
 
 pub use cross_kit_core as core;
 pub use cross_kit_core::{
@@ -149,6 +150,468 @@ impl<O: ?Sized> ObserverSet<O> {
     }
 }
 
+/// Shared state and observer runtime for simple state-driven VMs.
+///
+/// `StateStore` is intended for Rust SDK code that follows Cross-Kit's state
+/// VM pattern: store Rust-owned state, expose a `get_state` method for
+/// generated bridges, replay state on subscription, and notify observers after
+/// mutations. It keeps the state lock and observer collection in one reusable
+/// helper while still letting each VM choose the observer callback method.
+pub struct StateStore<S, O: ?Sized> {
+    inner: Arc<Mutex<StateStoreInner<S>>>,
+    observers: ObserverSet<O>,
+    observer_sequence: Arc<Mutex<()>>,
+    callback_gate: CallbackGate,
+}
+
+struct StateStoreInner<S> {
+    state: S,
+    event_version: u64,
+    notification_version: u64,
+    pending_replays: usize,
+    events: Vec<StateStoreEvent<S>>,
+}
+
+#[derive(Clone)]
+struct StateStoreEvent<S> {
+    version: u64,
+    state: S,
+}
+
+struct StateReplayWindow<S> {
+    inner: Arc<Mutex<StateStoreInner<S>>>,
+    active: bool,
+}
+
+#[derive(Clone)]
+struct CallbackGate {
+    inner: Arc<CallbackGateInner>,
+}
+
+struct CallbackGateInner {
+    state: Mutex<CallbackGateState>,
+    available: Condvar,
+}
+
+struct CallbackGateState {
+    owner: Option<ThreadId>,
+    depth: usize,
+}
+
+struct CallbackGateGuard {
+    gate: CallbackGate,
+}
+
+impl<S> StateReplayWindow<S> {
+    fn begin(inner: Arc<Mutex<StateStoreInner<S>>>, locked_inner: &mut StateStoreInner<S>) -> Self {
+        locked_inner.pending_replays += 1;
+        Self {
+            inner,
+            active: true,
+        }
+    }
+
+    fn end_with_locked_inner(&mut self, locked_inner: &mut StateStoreInner<S>) {
+        if self.active {
+            locked_inner.pending_replays -= 1;
+            if locked_inner.pending_replays == 0 {
+                locked_inner.events.clear();
+            }
+            self.active = false;
+        }
+    }
+}
+
+impl<S> Drop for StateReplayWindow<S> {
+    fn drop(&mut self) {
+        if self.active {
+            let mut inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            inner.pending_replays -= 1;
+            if inner.pending_replays == 0 {
+                inner.events.clear();
+            }
+        }
+    }
+}
+
+impl CallbackGate {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(CallbackGateInner {
+                state: Mutex::new(CallbackGateState {
+                    owner: None,
+                    depth: 0,
+                }),
+                available: Condvar::new(),
+            }),
+        }
+    }
+
+    fn enter(&self) -> CallbackGateGuard {
+        let current = std::thread::current().id();
+        let mut state = self
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while state.owner.as_ref().is_some_and(|owner| owner != &current) {
+            state = self
+                .inner
+                .available
+                .wait(state)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
+        state.owner = Some(current);
+        state.depth += 1;
+        CallbackGateGuard { gate: self.clone() }
+    }
+}
+
+impl Drop for CallbackGateGuard {
+    fn drop(&mut self) {
+        let mut state = self
+            .gate
+            .inner
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.depth -= 1;
+        if state.depth == 0 {
+            state.owner = None;
+            self.gate.inner.available.notify_all();
+        }
+    }
+}
+
+impl<S, O: ?Sized> Clone for StateStore<S, O> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            observers: self.observers.clone(),
+            observer_sequence: self.observer_sequence.clone(),
+            callback_gate: self.callback_gate.clone(),
+        }
+    }
+}
+
+impl<S, O: ?Sized> StateStore<S, O> {
+    /// Creates a store from an initial state value.
+    ///
+    /// The store starts with no observers. The first subscription id returned
+    /// by [`subscribe_replay`](Self::subscribe_replay) is `1`.
+    pub fn new(state: S) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(StateStoreInner {
+                state,
+                event_version: 0,
+                notification_version: 0,
+                pending_replays: 0,
+                events: Vec::new(),
+            })),
+            observers: ObserverSet::new(),
+            observer_sequence: Arc::new(Mutex::new(())),
+            callback_gate: CallbackGate::new(),
+        }
+    }
+
+    /// Reads the current state through a caller-provided projection.
+    ///
+    /// The state lock is held only while `read` runs. Use this when the VM
+    /// stores private state and needs to derive a public state record without
+    /// cloning the private store first.
+    pub fn read_with<R>(&self, read: impl FnOnce(&S) -> R) -> R {
+        let inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        read(&inner.state)
+    }
+
+    /// Registers an observer, immediately replays the current state, and
+    /// returns the subscription id.
+    ///
+    /// `replay` is called before the observer becomes part of the steady-state
+    /// notification set. The state lock is not held while platform callback
+    /// code runs, so replay callbacks may call back into the VM without
+    /// deadlocking the state store.
+    ///
+    /// Subscription replay is serialized with [`update_notify`](Self::update_notify)
+    /// and [`update_with_notify`](Self::update_with_notify): if state changes
+    /// during replay, the subscriber receives those snapshots before the
+    /// subscription id is returned.
+    pub fn subscribe_replay(
+        &self,
+        observer: Arc<O>,
+        replay: impl FnMut(&Arc<O>, S),
+    ) -> SubscriptionId
+    where
+        S: Clone,
+    {
+        self.subscribe_replay_with(observer, Clone::clone, replay)
+    }
+
+    /// Registers an observer and replays a projected state snapshot.
+    ///
+    /// Use this variant when the VM stores private state but exposes a derived
+    /// platform state record. The snapshot projection runs while the state lock
+    /// is held; the replay callback runs after the lock is released.
+    ///
+    /// The replay window records concurrent state notifications and drains them
+    /// before registering the observer. This avoids the common lost-update race
+    /// where a subscriber replays an old snapshot and misses the next notify.
+    pub fn subscribe_replay_with<R>(
+        &self,
+        observer: Arc<O>,
+        mut snapshot: impl FnMut(&S) -> R,
+        mut replay: impl FnMut(&Arc<O>, R),
+    ) -> SubscriptionId
+    where
+        S: Clone,
+    {
+        let (state, mut replay_after, mut replay_window) = {
+            let _observer_sequence = self
+                .observer_sequence
+                .lock()
+                .expect("state store observer sequence lock poisoned");
+            let mut inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let state = snapshot(&inner.state);
+            let replay_after = inner.event_version;
+            let replay_window = StateReplayWindow::begin(self.inner.clone(), &mut inner);
+            (state, replay_after, replay_window)
+        };
+        self.replay_observer(&observer, state, &mut replay);
+
+        loop {
+            let (end_version, replay_states, id) = {
+                let _observer_sequence = self
+                    .observer_sequence
+                    .lock()
+                    .expect("state store observer sequence lock poisoned");
+                let mut inner = self
+                    .inner
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                let replay_states = inner
+                    .events
+                    .iter()
+                    .filter(|event| event.version > replay_after)
+                    .map(|event| snapshot(&event.state))
+                    .collect::<Vec<_>>();
+                let end_version = inner.event_version;
+                if replay_states.is_empty() {
+                    replay_window.end_with_locked_inner(&mut inner);
+                    let id = self.observers.subscribe(observer.clone());
+                    (end_version, replay_states, Some(id))
+                } else {
+                    (end_version, replay_states, None)
+                }
+            };
+
+            if let Some(id) = id {
+                return id;
+            }
+            for state in replay_states {
+                self.replay_observer(&observer, state, &mut replay);
+            }
+            replay_after = end_version;
+        }
+    }
+
+    /// Removes a previously registered observer.
+    ///
+    /// Returns `true` if an observer was removed. Repeated calls with the same
+    /// id are allowed and return `false` after the first removal.
+    pub fn unsubscribe(&self, id: SubscriptionId) -> bool {
+        self.observers.unsubscribe(id)
+    }
+
+    fn replay_observer<R>(&self, observer: &Arc<O>, state: R, replay: &mut impl FnMut(&Arc<O>, R)) {
+        let _callback = self.callback_gate.enter();
+        replay(observer, state);
+    }
+}
+
+impl<S: Clone, O: ?Sized> StateStore<S, O> {
+    fn record_event(inner: &mut StateStoreInner<S>, state: S) {
+        inner.event_version += 1;
+        if inner.pending_replays > 0 {
+            inner.events.push(StateStoreEvent {
+                version: inner.event_version,
+                state,
+            });
+        }
+    }
+
+    fn record_notification_event(inner: &mut StateStoreInner<S>, state: S) {
+        Self::record_event(inner, state);
+        inner.notification_version += 1;
+    }
+
+    /// Returns a clone of the current state.
+    pub fn read(&self) -> S {
+        self.read_with(Clone::clone)
+    }
+
+    /// Mutates state and returns the cloned post-mutation state.
+    ///
+    /// The observer set is not notified automatically, but active subscription
+    /// replay windows still record the new state so new observers do not get
+    /// stuck on an older snapshot. Use [`update_notify`](Self::update_notify)
+    /// when a mutation should emit a state callback to already subscribed
+    /// observers.
+    pub fn update(&self, mutate: impl FnOnce(&mut S)) -> S {
+        self.update_with(|state| {
+            mutate(state);
+            state.clone()
+        })
+    }
+
+    /// Mutates the state and returns a caller-provided result.
+    ///
+    /// This is the lower-level mutation primitive for VMs that need to update
+    /// state without notifying current observers. Active subscription replay
+    /// windows still see the cloned post-mutation state.
+    pub fn update_with<R>(&self, mutate: impl FnOnce(&mut S) -> R) -> R {
+        let _observer_sequence = self
+            .observer_sequence
+            .lock()
+            .expect("state store observer sequence lock poisoned");
+        let mut inner = self
+            .inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let value = mutate(&mut inner.state);
+        let state = inner.state.clone();
+        Self::record_event(&mut inner, state);
+        value
+    }
+
+    /// Mutates state, notifies observers with the post-mutation snapshot, and
+    /// returns that snapshot.
+    ///
+    /// The state lock is released before callbacks run. Each observer receives
+    /// a clone of the same state value. If a callback re-enters the VM and
+    /// publishes a newer state, the older notification round stops before
+    /// sending stale state to the remaining observers.
+    pub fn update_notify(&self, mutate: impl FnOnce(&mut S), notify: impl FnMut(&Arc<O>, S)) -> S {
+        self.update_with_notify(
+            |state| {
+                mutate(state);
+                state.clone()
+            },
+            notify,
+        )
+    }
+
+    /// Mutates state, derives a public notification value, and notifies the
+    /// current observers with that value.
+    ///
+    /// This is the state-store primitive for VMs that keep private Rust state
+    /// but expose a derived platform state. Concurrent subscription replay is
+    /// reconciled using cloned private state snapshots and the subscriber's
+    /// projection function.
+    pub fn update_with_notify<R: Clone>(
+        &self,
+        mutate: impl FnOnce(&mut S) -> R,
+        notify: impl FnMut(&Arc<O>, R),
+    ) -> R {
+        let (value, observers, version) = {
+            let _observer_sequence = self
+                .observer_sequence
+                .lock()
+                .expect("state store observer sequence lock poisoned");
+            let mut inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let value = mutate(&mut inner.state);
+            let state = inner.state.clone();
+            Self::record_notification_event(&mut inner, state);
+            (value, self.observers.snapshot(), inner.notification_version)
+        };
+        self.notify_observers(observers, version, value.clone(), notify);
+        value
+    }
+
+    /// Optionally mutates state and notifies observers only when the mutation
+    /// returns `Some`.
+    ///
+    /// This is useful for no-op actions such as cancelling when no request is
+    /// active. The returned value is the cloned post-mutation state when a
+    /// notification happened.
+    pub fn try_update_notify(
+        &self,
+        mutate: impl FnOnce(&mut S) -> Option<()>,
+        notify: impl FnMut(&Arc<O>, S),
+    ) -> Option<S> {
+        self.try_update_with_notify(
+            |state| {
+                mutate(state)?;
+                Some(state.clone())
+            },
+            notify,
+        )
+    }
+
+    /// Optionally mutates state, derives a public notification value, and only
+    /// notifies observers when the mutation returns `Some`.
+    ///
+    /// Use this for state-driven no-op actions where the platform should not
+    /// receive a redundant callback.
+    pub fn try_update_with_notify<R: Clone>(
+        &self,
+        mutate: impl FnOnce(&mut S) -> Option<R>,
+        notify: impl FnMut(&Arc<O>, R),
+    ) -> Option<R> {
+        let (value, observers, version) = {
+            let _observer_sequence = self
+                .observer_sequence
+                .lock()
+                .expect("state store observer sequence lock poisoned");
+            let mut inner = self
+                .inner
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let value = mutate(&mut inner.state)?;
+            let state = inner.state.clone();
+            Self::record_notification_event(&mut inner, state);
+            (value, self.observers.snapshot(), inner.notification_version)
+        };
+        self.notify_observers(observers, version, value.clone(), notify);
+        Some(value)
+    }
+
+    fn notify_observers<R: Clone>(
+        &self,
+        observers: Vec<Arc<O>>,
+        notification_version: u64,
+        value: R,
+        mut notify: impl FnMut(&Arc<O>, R),
+    ) {
+        for observer in observers {
+            let _callback = self.callback_gate.enter();
+            if !self.is_current_notification_version(notification_version) {
+                break;
+            }
+            notify(&observer, value.clone());
+        }
+    }
+
+    fn is_current_notification_version(&self, version: u64) -> bool {
+        self.inner
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .notification_version
+            == version
+    }
+}
+
 /// Metadata emitted by Cross-Kit VM bridge macros.
 ///
 /// Generated metadata is consumed by the Cross-Kit CLI, code generators, and
@@ -192,11 +655,13 @@ macro_rules! metadata_main {
 
 #[cfg(test)]
 mod tests {
-    use super::{CkVmMetadata, ObserverSet, metadata_json};
+    use super::{CkVmMetadata, ObserverSet, StateStore, metadata_json};
     use std::sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
+        mpsc,
     };
+    use std::time::Duration;
 
     struct ManualMetadata;
 
@@ -363,5 +828,368 @@ mod tests {
 
         observers.notify(|observer| observer());
         assert!(observers.is_empty());
+    }
+
+    #[test]
+    fn state_store_reads_and_updates_state() {
+        let store = StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(3);
+        let cloned_store = store.clone();
+
+        assert_eq!(store.read(), 3);
+        assert_eq!(cloned_store.update(|state| *state += 4), 7);
+        assert_eq!(store.read_with(|state| *state * 2), 14);
+    }
+
+    #[test]
+    fn state_store_replays_current_state_on_subscribe() {
+        let store = StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(10);
+        store.update(|state| *state += 1);
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let states_for_observer = states.clone();
+        let observer = Arc::new(move |state| states_for_observer.lock().unwrap().push(state));
+
+        let id = store.subscribe_replay(observer, |observer, state| observer(state));
+
+        assert_eq!(id, 1);
+        assert_eq!(states.lock().unwrap().as_slice(), &[11]);
+    }
+
+    #[test]
+    fn state_store_replays_projected_state_on_subscribe() {
+        #[derive(Clone)]
+        struct PrivateState {
+            value: i32,
+        }
+
+        let store = StateStore::<PrivateState, dyn Fn(String) + Send + Sync>::new(PrivateState {
+            value: 7,
+        });
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let states_for_observer = states.clone();
+        let observer =
+            Arc::new(move |state: String| states_for_observer.lock().unwrap().push(state));
+
+        let id = store.subscribe_replay_with(
+            observer,
+            |state| format!("value={}", state.value),
+            |observer, state| observer(state),
+        );
+
+        assert_eq!(id, 1);
+        assert_eq!(states.lock().unwrap().as_slice(), &["value=7".to_string()]);
+    }
+
+    #[test]
+    fn state_store_replays_reentrant_state_change_before_subscribe_returns() {
+        let store = Arc::new(StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0));
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let triggered = Arc::new(AtomicBool::new(false));
+
+        let store_for_observer = store.clone();
+        let states_for_observer = states.clone();
+        let triggered_for_observer = triggered.clone();
+        let observer = Arc::new(move |state| {
+            states_for_observer.lock().unwrap().push(state);
+            if state == 0 && !triggered_for_observer.swap(true, Ordering::SeqCst) {
+                store_for_observer
+                    .update_notify(|state| *state = 1, |observer, state| observer(state));
+            }
+        });
+
+        let id = store.subscribe_replay(observer, |observer, state| observer(state));
+        store.update_notify(|state| *state = 2, |observer, state| observer(state));
+
+        assert_eq!(id, 1);
+        assert_eq!(states.lock().unwrap().as_slice(), &[0, 1, 2]);
+    }
+
+    #[test]
+    fn state_store_replays_silent_update_during_initial_replay() {
+        let store = Arc::new(StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0));
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let triggered = Arc::new(AtomicBool::new(false));
+
+        let store_for_observer = store.clone();
+        let states_for_observer = states.clone();
+        let triggered_for_observer = triggered.clone();
+        let observer = Arc::new(move |state| {
+            states_for_observer.lock().unwrap().push(state);
+            if state == 0 && !triggered_for_observer.swap(true, Ordering::SeqCst) {
+                store_for_observer.update(|state| *state = 1);
+            }
+        });
+
+        let id = store.subscribe_replay(observer, |observer, state| observer(state));
+
+        assert_eq!(id, 1);
+        assert_eq!(states.lock().unwrap().as_slice(), &[0, 1]);
+    }
+
+    #[test]
+    fn state_store_silent_update_does_not_stop_current_notification_round() {
+        let store = Arc::new(StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0));
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let triggered = Arc::new(AtomicBool::new(false));
+
+        let first_store = store.clone();
+        let first_calls = calls.clone();
+        let first_triggered = triggered.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| {
+                first_calls.lock().unwrap().push(("first", state));
+                if state == 1 && !first_triggered.swap(true, Ordering::SeqCst) {
+                    first_store.update(|state| *state = 2);
+                }
+            }),
+            |_, _| {},
+        );
+
+        let second_calls = calls.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| {
+                second_calls.lock().unwrap().push(("second", state));
+            }),
+            |_, _| {},
+        );
+
+        store.update_notify(|state| *state = 1, |observer, state| observer(state));
+
+        let calls = calls.lock().unwrap().clone();
+        assert!(calls.contains(&("first", 1)));
+        assert!(calls.contains(&("second", 1)));
+        assert_eq!(store.read(), 2);
+    }
+
+    #[test]
+    fn state_store_closes_replay_window_when_replay_panics() {
+        let store = StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0);
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            store.subscribe_replay(Arc::new(|_state| {}), |_observer, _state| {
+                panic!("platform replay failed");
+            });
+        }));
+
+        assert!(result.is_err());
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let states_for_observer = states.clone();
+        let id = store.subscribe_replay(
+            Arc::new(move |state| states_for_observer.lock().unwrap().push(state)),
+            |observer, state| observer(state),
+        );
+        store.update_notify(|state| *state = 1, |observer, state| observer(state));
+
+        assert_eq!(id, 1);
+        assert_eq!(states.lock().unwrap().as_slice(), &[0, 1]);
+    }
+
+    #[test]
+    fn state_store_update_notify_uses_post_mutation_snapshot() {
+        let store = StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0);
+        let first_states = Arc::new(Mutex::new(Vec::new()));
+        let first_states_for_observer = first_states.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| first_states_for_observer.lock().unwrap().push(state)),
+            |_, _| {},
+        );
+        let second_states = Arc::new(Mutex::new(Vec::new()));
+        let second_states_for_observer = second_states.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| second_states_for_observer.lock().unwrap().push(state)),
+            |_, _| {},
+        );
+
+        let updated = store.update_notify(|state| *state = 42, |observer, state| observer(state));
+
+        assert_eq!(updated, 42);
+        assert_eq!(first_states.lock().unwrap().as_slice(), &[42]);
+        assert_eq!(second_states.lock().unwrap().as_slice(), &[42]);
+    }
+
+    #[test]
+    fn state_store_unsubscribe_stops_future_notifications() {
+        let store = StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(1);
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let states_for_observer = states.clone();
+        let id = store.subscribe_replay(
+            Arc::new(move |state| states_for_observer.lock().unwrap().push(state)),
+            |observer, state| observer(state),
+        );
+
+        store.update_notify(|state| *state += 1, |observer, state| observer(state));
+        assert!(store.unsubscribe(id));
+        assert!(!store.unsubscribe(id));
+        store.update_notify(|state| *state += 1, |observer, state| observer(state));
+
+        assert_eq!(states.lock().unwrap().as_slice(), &[1, 2]);
+    }
+
+    #[test]
+    fn state_store_try_update_notify_skips_noop_actions() {
+        let store = StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(5);
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let states_for_observer = states.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| states_for_observer.lock().unwrap().push(state)),
+            |observer, state| observer(state),
+        );
+
+        let skipped = store.try_update_notify(
+            |_state| None,
+            |observer: &Arc<dyn Fn(i32) + Send + Sync>, state| observer(state),
+        );
+        let updated = store.try_update_notify(
+            |state| {
+                *state += 1;
+                Some(())
+            },
+            |observer, state| observer(state),
+        );
+
+        assert_eq!(skipped, None);
+        assert_eq!(updated, Some(6));
+        assert_eq!(states.lock().unwrap().as_slice(), &[5, 6]);
+    }
+
+    #[test]
+    fn state_store_try_update_notify_stops_stale_round_after_reentrant_update() {
+        let store = Arc::new(StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0));
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let reentered = Arc::new(AtomicBool::new(false));
+
+        for _ in 0..3 {
+            let store_for_observer = store.clone();
+            let calls_for_observer = calls.clone();
+            let reentered_for_observer = reentered.clone();
+            store.subscribe_replay(
+                Arc::new(move |state| {
+                    calls_for_observer.lock().unwrap().push(state);
+                    if state == 1 && !reentered_for_observer.swap(true, Ordering::SeqCst) {
+                        store_for_observer.try_update_notify(
+                            |state| {
+                                *state = 2;
+                                Some(())
+                            },
+                            |observer, state| observer(state),
+                        );
+                    }
+                }),
+                |_, _| {},
+            );
+        }
+
+        store.try_update_notify(
+            |state| {
+                *state = 1;
+                Some(())
+            },
+            |observer, state| observer(state),
+        );
+
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(calls.iter().filter(|state| **state == 1).count(), 1);
+        assert_eq!(calls.iter().filter(|state| **state == 2).count(), 3);
+        assert!(calls.windows(2).all(|window| window[0] <= window[1]));
+    }
+
+    #[test]
+    fn state_store_notifies_outside_state_lock() {
+        let store = Arc::new(StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0));
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let reentered = Arc::new(AtomicBool::new(false));
+
+        let store_for_observer = store.clone();
+        let states_for_observer = states.clone();
+        let reentered_for_observer = reentered.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| {
+                states_for_observer.lock().unwrap().push(state);
+                if state == 1 && !reentered_for_observer.swap(true, Ordering::SeqCst) {
+                    store_for_observer
+                        .update_notify(|state| *state = 2, |observer, state| observer(state));
+                }
+            }),
+            |_, _| {},
+        );
+
+        store.update_notify(|state| *state = 1, |observer, state| observer(state));
+
+        assert_eq!(store.read(), 2);
+        assert_eq!(states.lock().unwrap().as_slice(), &[1, 2]);
+    }
+
+    #[test]
+    fn state_store_serializes_reentrant_notifications_for_all_observers() {
+        let store = Arc::new(StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0));
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let reentered = Arc::new(AtomicBool::new(false));
+
+        let first_store = store.clone();
+        let first_calls = calls.clone();
+        let first_reentered = reentered.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| {
+                first_calls.lock().unwrap().push(("first", state));
+                if state == 1 && !first_reentered.swap(true, Ordering::SeqCst) {
+                    first_store
+                        .update_notify(|state| *state = 2, |observer, state| observer(state));
+                }
+            }),
+            |_, _| {},
+        );
+
+        let second_calls = calls.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| {
+                second_calls.lock().unwrap().push(("second", state));
+            }),
+            |_, _| {},
+        );
+
+        store.update_notify(|state| *state = 1, |observer, state| observer(state));
+
+        let calls = calls.lock().unwrap().clone();
+        for observer_name in ["first", "second"] {
+            let values = calls
+                .iter()
+                .filter_map(|(name, value)| (*name == observer_name).then_some(*value))
+                .collect::<Vec<_>>();
+            assert_eq!(values.last(), Some(&2));
+            assert!(values.windows(2).all(|window| window[0] <= window[1]));
+        }
+    }
+
+    #[test]
+    fn state_store_serializes_concurrent_notification_delivery() {
+        let store = Arc::new(StateStore::<i32, dyn Fn(i32) + Send + Sync>::new(0));
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let states_for_observer = states.clone();
+        store.subscribe_replay(
+            Arc::new(move |state| states_for_observer.lock().unwrap().push(state)),
+            |_, _| {},
+        );
+
+        let (start_tx, start_rx) = mpsc::channel();
+        let store_for_thread = store.clone();
+        let concurrent = std::thread::spawn(move || {
+            start_rx.recv().unwrap();
+            store_for_thread.update_notify(|state| *state = 2, |observer, state| observer(state));
+        });
+        let started = Arc::new(AtomicBool::new(false));
+        let started_for_notify = started.clone();
+
+        store.update_notify(
+            |state| *state = 1,
+            |observer, state| {
+                if state == 1 && !started_for_notify.swap(true, Ordering::SeqCst) {
+                    start_tx.send(()).unwrap();
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                observer(state);
+            },
+        );
+        concurrent.join().unwrap();
+
+        assert_eq!(states.lock().unwrap().as_slice(), &[1, 2]);
     }
 }

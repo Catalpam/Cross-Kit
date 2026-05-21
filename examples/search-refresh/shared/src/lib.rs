@@ -1,7 +1,10 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+#[cfg(test)]
+use std::sync::Mutex;
 
 pub use cross_kit::CkVmMetadata;
-use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
+use cross_kit::{StateStore, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
@@ -59,8 +62,7 @@ struct StoreState {
 
 #[derive(uniffi::Object)]
 pub struct SearchViewModel {
-    state: Mutex<StoreState>,
-    observers: ObserverSet<dyn SearchObserver>,
+    state: StateStore<StoreState, dyn SearchObserver>,
 }
 
 // State mode intentionally keeps the platform surface small: one observable
@@ -72,13 +74,12 @@ impl SearchViewModel {
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            state: Mutex::new(StoreState::new()),
-            observers: ObserverSet::new(),
+            state: StateStore::new(StoreState::new()),
         })
     }
 
     pub fn update_query(&self, query: String) {
-        let state = self.mutate(|state| {
+        self.mutate_notify(|state| {
             // Editing the query invalidates the in-flight request. This mirrors
             // how a real search token/cancellation check would prevent stale
             // results from winning after the UI has moved on.
@@ -88,12 +89,12 @@ impl SearchViewModel {
             state.results.clear();
             state.error = None;
             state.active = None;
+            state.to_search_state()
         });
-        self.notify(state);
     }
 
     pub fn submit(&self) {
-        let state = self.mutate(|state| {
+        self.mutate_notify(|state| {
             let query = state.query.trim().to_string();
             if query.is_empty() {
                 state.is_loading = false;
@@ -101,7 +102,7 @@ impl SearchViewModel {
                 state.results.clear();
                 state.error = Some(SearchError::EmptyQuery);
                 state.active = None;
-                return;
+                return state.to_search_state();
             }
 
             let request_id = state.next_request_id;
@@ -115,121 +116,84 @@ impl SearchViewModel {
                 id: request_id,
                 query,
             });
+            state.to_search_state()
         });
-        self.notify(state);
     }
 
     pub fn tick(&self) {
-        let state = {
-            let mut state = self
-                .state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.mutate_optional_notify(|state| {
             let Some(active) = state.active.clone() else {
-                return;
+                return None;
             };
             state.progress = (state.progress + TICK_PROGRESS).min(100);
             if state.progress < 100 {
-                state.to_search_state()
+                Some(state.to_search_state())
             } else {
-                complete_active(&mut state, active.id, &active.query);
-                state.to_search_state()
+                complete_active(state, active.id, &active.query);
+                Some(state.to_search_state())
             }
-        };
-        self.notify(state);
+        });
     }
 
     pub fn cancel(&self) {
-        let Some(state) = self.mutate_optional(|state| {
+        self.mutate_optional_notify(|state| {
             state.active.as_ref()?;
             state.is_loading = false;
             state.progress = 0;
             state.error = Some(SearchError::Cancelled);
             state.active = None;
             Some(state.to_search_state())
-        }) else {
-            return;
-        };
-        self.notify(state);
+        });
     }
 
     pub fn get_state(&self) -> SearchState {
-        self.locked_state()
+        self.state.read_with(StoreState::to_search_state)
     }
 
     pub fn subscribe(&self, observer: Arc<dyn SearchObserver>) -> SubscriptionId {
-        let state = self.locked_state();
-        let subscription_id = self.observers.subscribe(observer.clone());
         // Generated root containers rely on this replay to show a consistent
         // idle/loading/error state as soon as the bridge is created.
-        observer.on_state(state);
-        subscription_id
+        self.state.subscribe_replay_with(
+            observer,
+            StoreState::to_search_state,
+            |observer, state| observer.on_state(state),
+        )
     }
 
     pub fn unsubscribe(&self, id: SubscriptionId) {
-        self.observers.unsubscribe(id);
+        self.state.unsubscribe(id);
     }
 }
 
 impl SearchViewModel {
-    fn mutate(&self, mutate: impl FnOnce(&mut StoreState)) -> SearchState {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        mutate(&mut state);
-        state.to_search_state()
+    fn mutate_notify(&self, mutate: impl FnOnce(&mut StoreState) -> SearchState) -> SearchState {
+        self.state
+            .update_with_notify(mutate, |observer, state| observer.on_state(state))
     }
 
-    fn mutate_optional(
+    fn mutate_optional_notify(
         &self,
         mutate: impl FnOnce(&mut StoreState) -> Option<SearchState>,
     ) -> Option<SearchState> {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        mutate(&mut state)
-    }
-
-    fn locked_state(&self) -> SearchState {
         self.state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .to_search_state()
-    }
-
-    fn notify(&self, state: SearchState) {
-        let observers = self.observers.snapshot();
-        ObserverSet::notify_snapshot(&observers, |observer| {
-            observer.on_state(state.clone());
-        });
+            .try_update_with_notify(mutate, |observer, state| observer.on_state(state))
     }
 
     #[cfg(test)]
     fn active_request_id_for_tests(&self) -> Option<i64> {
         self.state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .active
-            .as_ref()
-            .map(|active| active.id)
+            .read_with(|state| state.active.as_ref().map(|active| active.id))
     }
 
     #[cfg(test)]
     fn complete_request_for_tests(&self, request_id: i64) {
-        let state = {
-            let mut state = self
-                .state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.mutate_optional_notify(|state| {
             let Some(active) = state.active.clone() else {
-                return;
+                return None;
             };
-            complete_active(&mut state, request_id, &active.query);
-            state.to_search_state()
-        };
-        self.notify(state);
+            complete_active(state, request_id, &active.query);
+            Some(state.to_search_state())
+        });
     }
 }
 
@@ -454,6 +418,18 @@ mod tests {
         assert_eq!(after.error, None);
         assert!(after.can_submit);
         assert!(!after.can_cancel);
+    }
+
+    #[test]
+    fn noop_tick_and_cancel_do_not_notify_observers() {
+        let vm = SearchViewModel::new();
+        let observer = RecordingObserver::new();
+        vm.subscribe(observer.clone());
+
+        vm.tick();
+        vm.cancel();
+
+        assert_eq!(observer.states().len(), 1);
     }
 
     #[test]

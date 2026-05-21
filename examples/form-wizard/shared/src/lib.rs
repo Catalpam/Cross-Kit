@@ -1,7 +1,10 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+#[cfg(test)]
+use std::sync::Mutex;
 
 pub use cross_kit::CkVmMetadata;
-use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
+use cross_kit::{StateStore, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
@@ -39,8 +42,7 @@ pub trait FormWizardObserver: Send + Sync {
 
 #[derive(uniffi::Object)]
 pub struct FormWizardViewModel {
-    state: Mutex<FormWizardState>,
-    observers: ObserverSet<dyn FormWizardObserver>,
+    state: StateStore<FormWizardState, dyn FormWizardObserver>,
 }
 
 // The generated bridge exposes `state` as an observable platform property and
@@ -51,7 +53,7 @@ impl FormWizardViewModel {
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
-            state: Mutex::new(derive_state(FormWizardState {
+            state: StateStore::new(derive_state(FormWizardState {
                 step: FormStep::Profile,
                 name: String::new(),
                 email: String::new(),
@@ -66,7 +68,6 @@ impl FormWizardViewModel {
                 is_complete: false,
                 summary: String::new(),
             })),
-            observers: ObserverSet::new(),
         })
     }
 
@@ -123,49 +124,30 @@ impl FormWizardViewModel {
     }
 
     pub fn get_state(&self) -> FormWizardState {
-        self.locked_state()
+        self.state.read()
     }
 
     pub fn subscribe(&self, observer: Arc<dyn FormWizardObserver>) -> SubscriptionId {
-        let state = self.locked_state();
-        let subscription_id = self.observers.subscribe(observer.clone());
         // Immediate replay is part of the example contract: views can render
         // the first frame from Rust-owned derived state, not duplicated defaults.
-        observer.on_state(state);
-        subscription_id
+        self.state
+            .subscribe_replay(observer, |observer, state| observer.on_state(state))
     }
 
     pub fn unsubscribe(&self, id: SubscriptionId) {
-        self.observers.unsubscribe(id);
+        self.state.unsubscribe(id);
     }
 }
 
 impl FormWizardViewModel {
     fn update(&self, mutate: impl FnOnce(&mut FormWizardState)) {
-        let state = {
-            let mut state = self
-                .state
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            mutate(&mut state);
-            *state = derive_state(state.clone());
-            state.clone()
-        };
-        self.notify(state);
-    }
-
-    fn locked_state(&self) -> FormWizardState {
-        self.state
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .clone()
-    }
-
-    fn notify(&self, state: FormWizardState) {
-        let observers = self.observers.snapshot();
-        ObserverSet::notify_snapshot(&observers, |observer| {
-            observer.on_state(state.clone());
-        });
+        self.state.update_notify(
+            |state| {
+                mutate(state);
+                *state = derive_state(state.clone());
+            },
+            |observer, state| observer.on_state(state),
+        );
     }
 }
 
@@ -474,6 +456,25 @@ mod tests {
         assert_eq!(states.len(), 2);
         assert_eq!(states[0].name, "Ada Lovelace");
         assert_eq!(states[1].name, "Grace");
+    }
+
+    #[test]
+    fn blocked_next_still_notifies_with_derived_state() {
+        let vm = FormWizardViewModel::new();
+        let observer = RecordingObserver::new();
+        vm.subscribe(observer.clone());
+
+        vm.next();
+
+        let states = observer.states();
+        assert_eq!(states.len(), 2);
+        assert_eq!(states[1].step, FormStep::Profile);
+        assert_eq!(
+            states[1].name_error.as_deref(),
+            Some("Name must be at least 2 characters")
+        );
+        assert_eq!(states[1].email_error.as_deref(), Some("Email is required"));
+        assert!(!states[1].can_go_next);
     }
 
     fn valid_profile_vm() -> Arc<FormWizardViewModel> {
