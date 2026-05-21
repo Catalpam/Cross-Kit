@@ -1,5 +1,7 @@
 //! Shared core constants and models for Cross-Kit crates.
 
+#![warn(missing_docs)]
+
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// Default Cross-Kit project configuration file name.
@@ -8,91 +10,137 @@ pub const CONFIG_FILE_NAME: &str = "cross-kit.toml";
 /// Cross-Kit project configuration loaded from `cross-kit.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrossKitConfig {
+    /// Rust shared crate settings used by every target packager.
     pub shared: SharedConfig,
+    /// Optional root graph settings for generated platform containers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bindings: Option<BindingsConfig>,
+    /// Optional iOS packaging settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ios: Option<IosConfig>,
+    /// Optional Android packaging settings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub android: Option<AndroidConfig>,
 }
 
 impl CrossKitConfig {
+    /// Parses a `cross-kit.toml` document from a string.
+    ///
+    /// This is the shared parser used by the CLI and tests. Validation that
+    /// needs filesystem access, build tools, or target-specific context is
+    /// performed by the individual packagers after parsing.
     pub fn from_toml_str(input: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(input)
     }
 }
 
+/// Rust shared crate settings used to build native libraries and metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SharedConfig {
+    /// Path to the Rust crate that owns the Cross-Kit VM implementations.
     pub crate_path: String,
+    /// Optional Cargo package name when it differs from the crate path name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package: Option<String>,
+    /// Optional native library base name used by target packagers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lib_name: Option<String>,
+    /// Cargo binary name that prints VM metadata JSON.
     #[serde(default = "default_metadata_bin")]
     pub metadata_bin: String,
 }
 
+/// Root graph settings for generated SwiftUI and Compose containers.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BindingsConfig {
+    /// Rust VM type that acts as the root of the generated graph.
     pub root_vm: String,
+    /// Generated platform container name, such as `CrossKitSharedBridge`.
     pub container_name: String,
 }
 
+/// iOS packaging settings for Swift Package and native library output.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IosConfig {
+    /// Swift Package product/module name.
     pub package_name: String,
+    /// Output directory for generated iOS artifacts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
+    /// Optional XCFramework name override.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xcframework_name: Option<String>,
+    /// iOS build targets requested by the package command.
     #[serde(default = "default_ios_targets")]
     pub targets: Vec<String>,
+    /// Cargo build mode, usually `release` or `debug`.
     #[serde(default = "default_release")]
     pub build_mode: String,
+    /// Native library kind produced for iOS, currently `static` by default.
     #[serde(default = "default_static_lib")]
     pub lib_type: String,
+    /// iOS package format, currently `spm` by default.
     #[serde(default = "default_spm")]
     pub format: String,
+    /// Whether Cross-Kit should generate Swift bridge classes.
     #[serde(default = "default_true")]
     pub swift_bridges: bool,
 }
 
+/// Android packaging settings for native libraries, Kotlin bindings, and AAR output.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AndroidConfig {
+    /// Kotlin package name for generated Android bindings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package_name: Option<String>,
+    /// Legacy output directory for generated Android files.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
+    /// Optional destination for copied JNI libraries.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub jni_libs_output: Option<String>,
+    /// Output directory for packaged Android artifacts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub package_output: Option<String>,
+    /// Optional output directory for the temporary generated Gradle project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gradle_project_output: Option<String>,
+    /// Android library module name used inside the generated Gradle project.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub module_name: Option<String>,
+    /// Gradle executable used by the Android packager.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gradle_executable: Option<String>,
+    /// Java home used for generated Gradle builds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub java_home: Option<String>,
+    /// Android ABI targets to build with `cargo-ndk`.
     #[serde(default = "default_android_targets")]
     pub targets: Vec<String>,
+    /// Cargo build mode for Android native libraries.
     #[serde(default = "default_release")]
     pub build_mode: String,
+    /// Maven coordinates for the generated Android AAR.
     #[serde(default)]
     pub maven: AndroidMavenConfig,
 }
 
+/// Maven coordinates used when publishing generated Android AARs locally.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AndroidMavenConfig {
+    /// Maven group id, for example `com.crosskit`.
     #[serde(default = "default_android_maven_group_id")]
     pub group_id: String,
+    /// Maven artifact id. If omitted in TOML, the CLI may derive it from the module name.
     #[serde(default = "default_android_maven_artifact_id")]
     pub artifact_id: String,
+    /// Maven version for the generated AAR.
     #[serde(default = "default_android_maven_version")]
     pub version: String,
+    /// Whether `artifact_id` was explicitly present in TOML.
+    ///
+    /// This field is skipped during serialization and lets the CLI decide
+    /// whether it may replace the default artifact id with a module-derived id.
     #[serde(skip)]
     pub artifact_id_explicit: bool,
 }
@@ -181,24 +229,40 @@ pub const VM_METADATA_SCHEMA_VERSION: u32 = 1;
 /// Target-independent VM metadata consumed by platform code generators.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VmMetadata {
+    /// Metadata schema version. Generators reject unsupported versions.
     pub schema_version: u32,
+    /// Rust object type annotated with `#[cross_kit::vm_bridge]`.
     pub rust_type: String,
+    /// Generated platform bridge type name.
     pub bridge_name: String,
+    /// Notification model used by this VM.
     pub mode: VmMode,
+    /// Observer trait and callback used by state, diff-list, or event VMs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub observer: Option<ObserverMetadata>,
+    /// Rust state record type for `state` VMs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub state_type: Option<String>,
+    /// Rust diff enum type for `diff_list` VMs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff_type: Option<String>,
+    /// Rust list item record type for `diff_list` VMs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub list_item_type: Option<String>,
+    /// Optional parent factory that constructs this VM from a root VM.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub factory: Option<FactoryMetadata>,
+    /// Rust VM methods visible to platform code generators.
     pub methods: Vec<MethodMetadata>,
 }
 
 impl VmMetadata {
+    /// Validates the target-independent VM contract before code generation.
+    ///
+    /// This catches missing observer callbacks, missing state getters, invalid
+    /// method shapes, unsupported schema versions, and unknown modes early so
+    /// CLI/package failures point back to the VM metadata instead of generated
+    /// platform source code.
     pub fn validate(&self) -> Result<(), MetadataValidationError> {
         if self.schema_version != VM_METADATA_SCHEMA_VERSION {
             return Err(MetadataValidationError::UnsupportedSchemaVersion {
@@ -294,9 +358,13 @@ impl VmMetadata {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VmMode {
+    /// VM publishes full state snapshots through an observer callback.
     State,
+    /// VM publishes list patches that platform bridges apply to observable lists.
     DiffList,
+    /// Reserved mode for future one-off event streams.
     Event,
+    /// Deserialized value for unknown modes so validation can report a clean error.
     #[serde(other)]
     Unknown,
 }
@@ -304,47 +372,67 @@ pub enum VmMode {
 /// Observer callback contract for a VM.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObserverMetadata {
+    /// Rust observer trait type, for example `CounterObserver`.
     pub rust_type: String,
+    /// Rust callback method, for example `on_state` or `on_diffs`.
     pub method: String,
 }
 
 /// Parent factory used to create a child VM bridge.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FactoryMetadata {
+    /// Rust parent VM type that owns the factory method.
     pub rust_type: String,
+    /// Rust parent method used to create the child VM.
     pub method: String,
+    /// Generated bridge name for the parent VM.
     pub bridge_name: String,
 }
 
 /// Public VM method exposed to platform bindings.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MethodMetadata {
+    /// Rust method name in snake_case.
     pub name: String,
+    /// Rust method arguments in declaration order.
     #[serde(default)]
     pub args: Vec<ArgMetadata>,
+    /// Rust return type string captured from the annotated impl.
     pub return_type: String,
 }
 
 /// Public VM method argument.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ArgMetadata {
+    /// Rust argument name.
     pub name: String,
+    /// Rust argument type string.
     pub rust_type: String,
 }
 
 /// Validation failure for target-independent metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetadataValidationError {
+    /// A required field was present but contained only whitespace.
     EmptyField(&'static str),
+    /// A required field was absent.
     MissingField(&'static str),
+    /// A required method, such as `subscribe` or `get_state`, was absent.
     MissingMethod(&'static str),
+    /// A required method exists but has an unsupported signature.
     InvalidMethodShape {
+        /// Method whose signature failed validation.
         method: &'static str,
+        /// Human-readable reason describing the required shape.
         reason: &'static str,
     },
+    /// Metadata mode could not be mapped to a supported VM mode.
     UnknownMode,
+    /// Metadata schema version does not match the generator's supported version.
     UnsupportedSchemaVersion {
+        /// Version found in the metadata.
         actual: u32,
+        /// Version supported by this crate.
         expected: u32,
     },
 }

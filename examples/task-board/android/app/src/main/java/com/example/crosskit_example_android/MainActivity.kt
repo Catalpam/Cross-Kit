@@ -16,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,7 +40,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CrosskitexampleandroidTheme {
-                CrossKitApp()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground
+                ) {
+                    CrossKitApp()
+                }
             }
         }
     }
@@ -47,6 +54,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CrossKitApp(modifier: Modifier = Modifier) {
+    // The generated root container keeps the board state bridge and task list
+    // diff bridge tied to the same Rust store and lifecycle.
     val kit = rememberCrossKitTaskBoardBridge()
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         TaskBoardScreen(
@@ -69,6 +78,8 @@ private fun TaskBoardScreen(
     modifier: Modifier = Modifier
 ) {
     var draftTitle by remember { mutableStateOf("") }
+    // `draftTitle` is local UI editing state. Everything derived from submitted
+    // tasks, such as counters, filters, order, and errors, lives in Rust state.
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = "Task Board",
@@ -187,32 +198,48 @@ private fun TaskRow(index: Int, task: TaskItem, taskList: TaskListViewModelBridg
 
 @Composable
 private fun ActionButtons(state: TaskBoardState, taskList: TaskListViewModelBridge) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = taskList::addSampleBatch, modifier = Modifier.testTag("task.sample")) {
-            Text(text = "Sample")
-        }
-        Button(
-            onClick = { taskList.moveVisible(0, (taskList.items.size - 1).toLong()) },
-            enabled = taskList.items.size >= 2,
-            modifier = Modifier.testTag("task.move")
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(text = "Move")
-        }
-        Button(
-            onClick = {
-                taskList.items.firstOrNull()?.let { task ->
-                    taskList.renameTask(task.id, "Renamed")
-                }
-            },
-            enabled = taskList.items.isNotEmpty(),
-            modifier = Modifier.testTag("task.rename")
-        ) {
-            Text(text = "Rename")
+            Button(
+                onClick = taskList::addSampleBatch,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("task.sample")
+            ) {
+                Text(text = "Sample")
+            }
+            Button(
+                onClick = { taskList.moveVisible(0, (taskList.items.size - 1).toLong()) },
+                enabled = taskList.items.size >= 2,
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("task.move")
+            ) {
+                Text(text = "Move")
+            }
+            Button(
+                onClick = {
+                    taskList.items.firstOrNull()?.let { task ->
+                        taskList.renameTask(task.id, "Renamed")
+                    }
+                },
+                enabled = taskList.items.isNotEmpty(),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("task.rename")
+            ) {
+                Text(text = "Rename")
+            }
         }
         Button(
             onClick = taskList::clearDone,
             enabled = state.canClearDone,
-            modifier = Modifier.testTag("task.clear.done")
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("task.clear.done")
         ) {
             Text(text = "Clear done")
         }

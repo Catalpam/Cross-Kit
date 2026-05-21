@@ -14,6 +14,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,7 +34,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CrosskitexampleandroidTheme {
-                CrossKitApp()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground
+                ) {
+                    CrossKitApp()
+                }
             }
         }
     }
@@ -41,6 +48,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CrossKitApp(modifier: Modifier = Modifier) {
+    // The generated root container hides UniFFI setup and observer lifetimes.
+    // App code keeps one remembered object and renders Rust-derived state.
     val kit = rememberCrossKitFormWizardBridge()
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         FormWizardScreen(
@@ -55,6 +64,8 @@ fun CrossKitApp(modifier: Modifier = Modifier) {
 
 @Composable
 private fun FormWizardScreen(wizard: FormWizardViewModelBridge, modifier: Modifier = Modifier) {
+    // Validation, step routing, and button enablement are all part of Rust
+    // state. Compose only binds text changes and button clicks to actions.
     val state = wizard.state
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -34,7 +35,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CrosskitexampleandroidTheme {
-                CrossKitApp()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground
+                ) {
+                    CrossKitApp()
+                }
             }
         }
     }
@@ -42,9 +49,13 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CrossKitApp(modifier: Modifier = Modifier) {
+    // One generated container owns both bridges: summary state and cart diffs.
+    // Compose code does not need to understand observer ids or native library setup.
     val kit = rememberCrossKitShoppingCartBridge()
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         ShoppingCartScreen(
+            // Totals and product catalog are Rust-owned state; the cart list is
+            // maintained separately by the generated diff-list bridge.
             state = kit.shoppingCart.state,
             cart = kit.cart,
             onApplyCoupon = kit.shoppingCart::applyCoupon,

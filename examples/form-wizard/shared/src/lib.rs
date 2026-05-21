@@ -5,6 +5,9 @@ use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
+// Form Wizard shows the preferred Cross-Kit split for validation-heavy flows:
+// Rust owns the route step, field validation, derived button state, and summary;
+// platform code only binds inputs and renders the resulting state.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum FormStep {
     Profile,
@@ -40,6 +43,8 @@ pub struct FormWizardViewModel {
     observers: ObserverSet<dyn FormWizardObserver>,
 }
 
+// The generated bridge exposes `state` as an observable platform property and
+// forwards these public methods as synchronous UI actions.
 #[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl FormWizardViewModel {
@@ -124,6 +129,8 @@ impl FormWizardViewModel {
     pub fn subscribe(&self, observer: Arc<dyn FormWizardObserver>) -> SubscriptionId {
         let state = self.locked_state();
         let subscription_id = self.observers.subscribe(observer.clone());
+        // Immediate replay is part of the example contract: views can render
+        // the first frame from Rust-owned derived state, not duplicated defaults.
         observer.on_state(state);
         subscription_id
     }

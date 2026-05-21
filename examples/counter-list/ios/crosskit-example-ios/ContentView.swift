@@ -10,6 +10,8 @@ import Foundation
 import SwiftUI
 
 struct ContentView: View {
+    // CrossKitSharedBridge is generated from `cross-kit.toml` bindings and the
+    // Rust metadata. It owns the root app bridge plus child counter/list bridges.
     @StateObject private var kit = CrossKitSharedBridge(initial: 0)
     @State private var path: [AppRoute] = []
 
@@ -32,6 +34,9 @@ struct ContentView: View {
                 }
             }
             .onChange(of: kit.app.state.route) { route in
+                // Navigation is modeled as Rust state. The platform consumes the
+                // route, performs native navigation, then clears it through an
+                // action so the same route is not replayed.
                 guard let route else { return }
                 if let appRoute = AppRoute(route: route) {
                     path.append(appRoute)

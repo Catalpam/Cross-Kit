@@ -16,6 +16,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -33,7 +34,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CrosskitexampleandroidTheme {
-                CrossKitApp()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground
+                ) {
+                    CrossKitApp()
+                }
             }
         }
     }
@@ -41,6 +48,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CrossKitApp(modifier: Modifier = Modifier) {
+    // Even this long-operation example stays state-driven: the generated bridge
+    // exposes synchronous actions and observable state, not Kotlin suspend APIs.
     val kit = rememberCrossKitSearchRefreshBridge()
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         SearchScreen(
@@ -55,6 +64,8 @@ fun CrossKitApp(modifier: Modifier = Modifier) {
 
 @Composable
 private fun SearchScreen(search: SearchViewModelBridge, modifier: Modifier = Modifier) {
+    // Loading, progress, typed errors, and stale-result protection come from
+    // Rust. The UI just renders fields and sends user intents back.
     val state = search.state
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(

@@ -6,6 +6,9 @@ use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
+// Counter List is the broad integration sample. It combines a root app state
+// VM, a child counter state VM, and a child diff-list VM to show how Cross-Kit
+// wires multiple platform bridges to one Rust-owned store.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct CounterState {
     pub value: i32,
@@ -63,6 +66,9 @@ pub trait AppObserver: Send + Sync {
 
 #[derive(Clone)]
 struct Store {
+    // The store lock protects business state only. ObserverSet has its own lock
+    // and is kept outside StoreInner so platform callbacks are never invoked
+    // while holding the business-state mutex.
     inner: Arc<Mutex<StoreInner>>,
     observer_sequence: Arc<Mutex<()>>,
     app_observers: ObserverSet<dyn AppObserver>,
@@ -99,6 +105,9 @@ struct ReplayWindow {
     active: bool,
 }
 
+// List subscriptions replay current rows as insert diffs. The replay window
+// serializes that initial sync with concurrent writes so the generated list
+// bridge receives a deterministic sequence.
 impl ReplayWindow {
     fn begin(inner: Arc<Mutex<StoreInner>>, locked_inner: &mut StoreInner) -> (u64, Self) {
         let replay_after = Store::begin_replay(locked_inner);
@@ -831,6 +840,8 @@ pub struct AppViewModel {
     store: Store,
 }
 
+// Root VM: generated root containers create this once, then use the factory
+// methods below to create child bridges sharing the same Rust store.
 #[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl AppViewModel {
@@ -884,6 +895,8 @@ pub struct CounterViewModel {
     store: Store,
 }
 
+// Child state VM. The Rust path in `factory` lets Cross-Kit infer how generated
+// root containers should construct `kit.counter` from `kit.app`.
 #[vm_bridge(
     mode = "state",
     factory = AppViewModel::make_counter_vm
@@ -913,6 +926,8 @@ pub struct ListViewModel {
     store: Store,
 }
 
+// Child diff-list VM. Platform bridges expose this as an observable list and
+// hide the subscription id, replay, and diff application mechanics.
 #[vm_bridge(
     mode = "diff_list",
     diff = ListDiff,

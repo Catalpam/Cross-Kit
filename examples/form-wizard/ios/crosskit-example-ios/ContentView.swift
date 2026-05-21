@@ -2,9 +2,13 @@ import CrossKitFormWizardShared
 import SwiftUI
 
 struct ContentView: View {
+    // The generated root container hides UniFFI setup and observer lifetimes.
+    // The screen only keeps one `@StateObject` and reads Rust-derived state.
     @StateObject private var kit = CrossKitFormWizardBridge()
 
     private var state: FormWizardState {
+        // Validation errors, enabled buttons, and navigation step all come from
+        // Rust. SwiftUI only binds inputs back to action methods.
         kit.formWizard.state
     }
 
@@ -14,6 +18,8 @@ struct ContentView: View {
                 .font(.title.bold())
                 .accessibilityIdentifier("form.title")
 
+            // The platform routes by observing Rust state instead of
+            // reimplementing the wizard flow locally.
             switch state.step {
             case .profile:
                 ProfileStep(state: state, wizard: kit.formWizard)

@@ -5,11 +5,17 @@ use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
+// Minimal Counter is the smallest Cross-Kit shape:
+// one Rust-owned state record, one observer trait, and one exported VM. The
+// generated platform libraries turn this into `kit.counter.state` plus a few
+// synchronous action methods on iOS and Android.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct CounterState {
     pub value: i32,
 }
 
+// Platform bridges implement this trait for us. Rust calls `on_state` after
+// each mutation; SwiftUI/Compose only need to render the generated bridge state.
 #[uniffi::export(with_foreign)]
 pub trait CounterObserver: Send + Sync {
     fn on_state(&self, state: CounterState);
@@ -21,6 +27,9 @@ pub struct CounterViewModel {
     observers: ObserverSet<dyn CounterObserver>,
 }
 
+// `vm_bridge(mode = "state")` is the Cross-Kit contract for a state VM. The
+// macro reads this impl, infers the bridge/state/observer names, and emits
+// metadata consumed by the iOS and Android packagers.
 #[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl CounterViewModel {
@@ -51,6 +60,8 @@ impl CounterViewModel {
     pub fn subscribe(&self, observer: Arc<dyn CounterObserver>) -> SubscriptionId {
         let state = self.locked_state();
         let subscription_id = self.observers.subscribe(observer.clone());
+        // New subscribers receive the current state immediately so generated
+        // bridges are usable right after construction without a separate load.
         observer.on_state(state);
         subscription_id
     }

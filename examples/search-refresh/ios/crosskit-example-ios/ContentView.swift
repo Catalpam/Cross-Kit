@@ -2,9 +2,13 @@ import CrossKitSearchRefreshShared
 import SwiftUI
 
 struct ContentView: View {
+    // Cross-Kit still exposes a synchronous action + observed state model even
+    // for long-running work. The generated bridge owns subscription cleanup.
     @StateObject private var kit = CrossKitSearchRefreshBridge()
 
     private var state: SearchState {
+        // Loading, progress, typed errors, and stale-result protection are Rust
+        // state. SwiftUI does not need an async task model for this example.
         kit.search.state
     }
 
@@ -15,6 +19,8 @@ struct ContentView: View {
                 .accessibilityIdentifier("search.title")
             TextField("Query", text: Binding(
                 get: { state.query },
+                // Text edits are intent calls into Rust; Rust decides how they
+                // affect pending work, errors, and previous results.
                 set: { kit.search.updateQuery(query: $0) }
             ))
             .textFieldStyle(.roundedBorder)

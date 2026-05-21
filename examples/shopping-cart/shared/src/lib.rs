@@ -5,6 +5,9 @@ use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
+// Shopping Cart is a business-rule example. Rust owns catalog stock checks,
+// coupon validation, totals, tax, and cart diffs; platform code should mostly
+// render state and invoke intent-like methods.
 const TAX_BASIS_POINTS: i64 = 825;
 const SAVE10: &str = "SAVE10";
 
@@ -76,6 +79,9 @@ pub trait CartObserver: Send + Sync {
 
 #[derive(Clone)]
 struct Store {
+    // The cart list and summary state are derived from the same locked store,
+    // but notifications are emitted through separate observer sets so generated
+    // bridges can update `kit.cart.items` and `kit.shoppingCart.state`.
     inner: Arc<Mutex<StoreInner>>,
     cart_observers: ObserverSet<dyn CartObserver>,
     state_observers: ObserverSet<dyn ShoppingCartObserver>,
@@ -98,6 +104,8 @@ pub struct CartViewModel {
     store: Store,
 }
 
+// Root state VM: owns summary-level actions and creates the child cart VM used
+// by the diff-list bridge.
 #[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl ShoppingCartViewModel {
@@ -153,6 +161,7 @@ impl ShoppingCartViewModel {
     pub fn subscribe(&self, observer: Arc<dyn ShoppingCartObserver>) -> SubscriptionId {
         let state = self.get_state();
         let id = self.store.state_observers.subscribe(observer.clone());
+        // Replay keeps totals and product catalog available on first render.
         observer.on_state(state);
         id
     }
@@ -162,6 +171,9 @@ impl ShoppingCartViewModel {
     }
 }
 
+// Child diff-list VM: generated iOS/Android bridges maintain the visible cart
+// collection by applying these diffs, rather than requiring platform code to
+// recalculate list positions.
 #[vm_bridge(
     mode = "diff_list",
     diff = CartDiff,
@@ -286,6 +298,8 @@ impl CartViewModel {
         let cart = self.store.cart_items();
         let id = self.store.cart_observers.subscribe(observer.clone());
         if !cart.is_empty() {
+            // Initial cart contents are sent as inserts so a newly created list
+            // bridge has the same state as Rust before live updates arrive.
             observer.on_diffs(
                 cart.into_iter()
                     .enumerate()

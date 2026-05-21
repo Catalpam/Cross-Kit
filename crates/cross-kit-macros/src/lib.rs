@@ -46,6 +46,17 @@ impl Parse for MacroArgs {
     }
 }
 
+/// Emits Cross-Kit VM bridge metadata for a UniFFI-exported Rust VM impl.
+///
+/// This proc macro is re-exported for users as [`cross_kit::vm_bridge`]. It
+/// supports string options such as `mode = "state"` for compatibility and Rust
+/// path options such as `factory = AppViewModel::make_counter_vm`,
+/// `diff = ListDiff`, and `item = ListItem` for type-checked configuration.
+///
+/// The generated metadata is consumed by Cross-Kit's iOS and Android packagers;
+/// the annotated impl itself is preserved unchanged for UniFFI.
+///
+/// [`cross_kit::vm_bridge`]: https://docs.rs/cross-kit/latest/cross_kit/attr.vm_bridge.html
 #[proc_macro_attribute]
 pub fn ck_vm_bridge(args: TokenStream, input: TokenStream) -> TokenStream {
     expand_ck_vm_bridge(args.into(), input.into())

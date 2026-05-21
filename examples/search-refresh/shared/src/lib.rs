@@ -5,6 +5,9 @@ use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
+// Search Refresh demonstrates long-running work without exposing async APIs
+// through Cross-Kit. UI calls synchronous actions (`submit`, `tick`, `cancel`)
+// and observes state fields such as loading/progress/results/error.
 const TICK_PROGRESS: i64 = 50;
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -60,6 +63,9 @@ pub struct SearchViewModel {
     observers: ObserverSet<dyn SearchObserver>,
 }
 
+// State mode intentionally keeps the platform surface small: one observable
+// state object plus action methods. Failure is modeled as typed state, not as a
+// Swift `throw` or Kotlin `suspend` result.
 #[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl SearchViewModel {
@@ -73,6 +79,9 @@ impl SearchViewModel {
 
     pub fn update_query(&self, query: String) {
         let state = self.mutate(|state| {
+            // Editing the query invalidates the in-flight request. This mirrors
+            // how a real search token/cancellation check would prevent stale
+            // results from winning after the UI has moved on.
             state.query = query;
             state.is_loading = false;
             state.progress = 0;
@@ -151,6 +160,8 @@ impl SearchViewModel {
     pub fn subscribe(&self, observer: Arc<dyn SearchObserver>) -> SubscriptionId {
         let state = self.locked_state();
         let subscription_id = self.observers.subscribe(observer.clone());
+        // Generated root containers rely on this replay to show a consistent
+        // idle/loading/error state as soon as the bridge is created.
         observer.on_state(state);
         subscription_id
     }

@@ -2,10 +2,14 @@ import CrossKitTaskBoardShared
 import SwiftUI
 
 struct ContentView: View {
+    // The generated container keeps `taskBoard` state and `taskList` diffs in
+    // sync with the same Rust store.
     @StateObject private var kit = CrossKitTaskBoardBridge()
     @State private var draftTitle = ""
 
     private var state: TaskBoardState {
+        // Counters, filter state, and validation errors are derived in Rust; the
+        // Swift view only renders them and sends user intents back.
         kit.taskBoard.state
     }
 
@@ -48,6 +52,8 @@ struct ContentView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("task.input")
             Button("Add") {
+                // Rust trims and validates the title, assigns stable ids, and
+                // emits the diff needed by `kit.taskList.items`.
                 kit.taskList.addTask(title: draftTitle)
                 draftTitle = ""
             }

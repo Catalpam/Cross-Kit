@@ -52,13 +52,13 @@ class SearchScreenInstrumentedTest {
         composeRule.onNodeWithTag("search.submit").performClick()
         composeRule.onNodeWithTag("search.tick").performClick()
         composeRule.onNodeWithTag("search.tick").performClick()
-        composeRule.onNodeWithTag("search.error").assertTextContains("Network")
+        composeRule.onNodeWithTag("search.error").assertTextContains("Network", substring = true)
 
         composeRule.onNodeWithTag("search.query").performTextClearance()
         composeRule.onNodeWithTag("search.query").performTextInput("rust")
         composeRule.onNodeWithTag("search.submit").performClick()
         composeRule.onNodeWithTag("search.cancel").performClick()
-        composeRule.onNodeWithTag("search.error").assertTextContains("Cancelled")
+        composeRule.onNodeWithTag("search.error").assertTextContains("Cancelled", substring = true)
 
         composeRule.onNodeWithTag("search.submit").performClick()
         composeRule.onNodeWithTag("search.tick").performClick()

@@ -5,6 +5,9 @@ use cross_kit::{ObserverSet, SubscriptionId, vm_bridge};
 
 uniffi::setup_scaffolding!();
 
+// Task Board demonstrates the two-VM pattern: a state VM for aggregate board
+// state and a diff-list VM for the visible collection. Both VMs share one Rust
+// store so filtering, ordering, counters, and errors stay consistent.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum TaskFilter {
     All,
@@ -51,6 +54,9 @@ pub trait TaskListObserver: Send + Sync {
 
 #[derive(Clone)]
 struct Store {
+    // Business state and observer collections are deliberately separate. This
+    // lets Cross-Kit snapshot observers before callbacks and avoids calling
+    // platform code while holding the store lock.
     inner: Arc<Mutex<StoreInner>>,
     board_observers: ObserverSet<dyn TaskBoardObserver>,
     list_observers: ObserverSet<dyn TaskListObserver>,
@@ -73,6 +79,8 @@ pub struct TaskListViewModel {
     store: Store,
 }
 
+// Root VM: generated root containers create this first and expose it as
+// `kit.taskBoard` / `kit.taskBoard.state` on the platform side.
 #[vm_bridge(mode = "state")]
 #[uniffi::export]
 impl TaskBoardViewModel {
@@ -105,6 +113,8 @@ impl TaskBoardViewModel {
     pub fn subscribe(&self, observer: Arc<dyn TaskBoardObserver>) -> SubscriptionId {
         let state = self.get_state();
         let id = self.store.board_observers.subscribe(observer.clone());
+        // Replay derived board state immediately; Compose/SwiftUI should not
+        // need local copies of counters or validation state.
         observer.on_state(state);
         id
     }
@@ -114,6 +124,8 @@ impl TaskBoardViewModel {
     }
 }
 
+// Child diff-list VM: the `factory` path tells Cross-Kit that this VM is made
+// from the root VM, so generated root containers can own both lifecycles.
 #[vm_bridge(
     mode = "diff_list",
     diff = TaskDiff,
@@ -250,6 +262,8 @@ impl TaskListViewModel {
         let visible = self.store.visible_tasks();
         let id = self.store.list_observers.subscribe(observer.clone());
         if !visible.is_empty() {
+            // A list bridge starts empty, then applies this insert replay to
+            // reach the current Rust list before handling live diffs.
             observer.on_diffs(
                 visible
                     .into_iter()

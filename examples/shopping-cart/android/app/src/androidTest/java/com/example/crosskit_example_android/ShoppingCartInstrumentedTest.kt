@@ -34,7 +34,7 @@ class ShoppingCartInstrumentedTest {
         composeRule.onNodeWithTag("cart.total").assertTextEquals("Total \$25.32")
 
         composeRule.onNodeWithTag("coupon.bad").performClick()
-        composeRule.onNodeWithTag("cart.error").assertTextContains("InvalidCoupon")
+        composeRule.onNodeWithTag("cart.error").assertTextContains("InvalidCoupon", substring = true)
 
         composeRule.onNodeWithTag("cart.more.1").performClick()
         composeRule.onNodeWithTag("cart.items.count").assertTextEquals("Items 3")
@@ -46,6 +46,6 @@ class ShoppingCartInstrumentedTest {
         composeRule.onNodeWithTag("product.add.3").performClick()
         composeRule.onNodeWithTag("product.add.3").performClick()
         composeRule.onNodeWithTag("product.add.3").performClick()
-        composeRule.onNodeWithTag("cart.error").assertTextContains("OutOfStock")
+        composeRule.onNodeWithTag("cart.error").assertTextContains("OutOfStock", substring = true)
     }
 }

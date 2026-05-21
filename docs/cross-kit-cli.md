@@ -95,10 +95,14 @@ Rust VM 基本模板（思路）：
 5. VM 提供 `subscribe(observer)` 与 `dispatch(intent)`
 
 ### 2.4 观察者（Observer）桥接
-与 `InvokeFFI` 类似：
+Cross-Kit 的公开平台 API 保持 state-driven：端上调用同步 action，观察
+generated bridge 暴露的 `state` / `items`，不直接订阅 Rust observer 或处理
+subscription id。
+
+底层仍然由 Rust VM 定义 observer trait，生成代码负责实现和绑定：
 - Rust 侧定义 `VmObserver` trait（带 `on_state` / `on_event`）
-- Swift/Kotlin 实现该接口并绑定到 UI
-- Rust VM 内部通过 `tokio::sync::watch` 或 `broadcast` 管理订阅
+- Swift/Kotlin generated bridge 实现该接口并绑定到 UI state
+- Rust VM 内部维护当前 state 和 observer 集合，订阅时立即 replay 当前 state
 
 Rust 伪代码结构：
 ```rust
@@ -158,9 +162,12 @@ class LoginVM : LoginObserver {
 ```
 
 ### 2.6 并发与线程模型建议
-- Rust 内部使用 `tokio` runtime
-- Rust VM 中所有 IO / 网络 / DB 任务走 `async`
-- Swift/Kotlin 回调回主线程（SwiftUI/Compose 的 UI 线程）
+- Cross-Kit 不把 Rust async 方法映射成 Swift `async throws` 或 Kotlin `suspend`。
+- 登录、刷新、搜索、上传等长任务对端上仍表现为同步 action + observed state：
+  `loading`、`progress`、`result`、`notice`、`can_retry` 等都放进业务 state。
+- Rust 业务代码可以自行使用线程、runtime 或队列推进任务，但这些细节不进入 generated
+  platform API。
+- Swift/Kotlin generated bridge 负责把 observer 回调切回 SwiftUI/Compose 适合的主线程模型。
 
 ### 2.7 建议的 VM 生命周期
 - UI 启动时创建 VM 并订阅

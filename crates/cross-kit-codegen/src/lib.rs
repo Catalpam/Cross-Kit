@@ -321,6 +321,11 @@ fn generate_swift_root_container_source(graph: &RootGraph<'_>) -> String {
 import Combine
 import Foundation
 
+/// SwiftUI-facing root bridge that owns the generated VM bridge graph.
+///
+/// Hold this type with `@StateObject` and read child bridge properties for
+/// observable state and lists. The root container forwards child changes
+/// through `objectWillChange`.
 @MainActor
 public final class {container}: ObservableObject {{
     public let {root_property}: {root_bridge}
@@ -379,6 +384,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 
+/**
+ * Compose-facing root bridge that owns the generated VM bridge graph.
+ *
+ * Prefer creating this with [remember{container}] so native subscriptions are
+ * closed when the composable leaves composition.
+ */
 class {container}{ctor_sig} : AutoCloseable {{
     val {root_property}: {root_bridge} = {root_ctor}
 {child_decls}
@@ -392,6 +403,9 @@ class {container}{ctor_sig} : AutoCloseable {{
     }}
 }}
 
+/**
+ * Remembers a [{container}] for the current composition and closes it on disposal.
+ */
 @Composable
 fun remember{container}({remember_args}): {container} {{
     val kit = remember({remember_keys}) {{ {container}({remember_call_args}) }}
@@ -542,6 +556,10 @@ import Combine
 import Foundation
 
 {observer_proxy}
+/// SwiftUI-facing bridge for `{vm_type}`.
+///
+/// Call public methods to send actions into Rust and observe `state` for
+/// changes. Subscription ids and observer proxies are managed internally.
 @MainActor
 public final class {bridge}: ObservableObject, {observer} {{
     @Published public private(set) var state: {state_type}
@@ -645,6 +663,11 @@ import Combine
 import Foundation
 
 {observer_proxy}
+/// SwiftUI-facing list bridge for `{vm_type}`.
+///
+/// Call public methods to send list actions into Rust and observe `items` for
+/// diff-applied list state. Subscription ids and observer proxies are managed
+/// internally.
 @MainActor
 public final class {bridge}: ObservableObject, {observer} {{
     @Published public private(set) var items: [{list_item}] = []
@@ -741,14 +764,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
+/**
+ * Compose-facing bridge for {vm_type}.
+ *
+ * Call public methods to send actions into Rust and read [state] from Compose.
+ * Native observer subscriptions are managed internally.
+ */
 class {bridge}{ctor_sig} : {observer} {{
     private val handler = Handler(Looper.getMainLooper())
     private val vm: {vm_type} = {vm_init}
-    private val observerId: Long = vm.subscribe(this)
-    private var closed = false
 
     var state: {state_type} by mutableStateOf(vm.getState())
         private set
+
+    private val observerId: Long = vm.subscribe(this)
+    private var closed = false
 
 {methods}    fun close() {{
         if (closed) return
@@ -807,13 +837,20 @@ import android.os.Looper
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
 
+/**
+ * Compose-facing list bridge for {vm_type}.
+ *
+ * Call public methods to send list actions into Rust and read [items] from
+ * Compose. Native observer subscriptions are managed internally.
+ */
 class {bridge}{ctor_sig} : {observer} {{
     private val handler = Handler(Looper.getMainLooper())
     private val vm: {vm_type} = {vm_init}
-    private val observerId: Long = vm.subscribe(this)
-    private var closed = false
 
     val items: SnapshotStateList<{list_item}> = mutableStateListOf()
+
+    private val observerId: Long = vm.subscribe(this)
+    private var closed = false
 
 {methods}    fun close() {{
         if (closed) return
@@ -892,6 +929,7 @@ fn filtered_methods(metadata: &VmMetadata) -> Vec<&MethodMetadata> {
         .iter()
         .filter(|method| method.name != "subscribe" && method.name != "new")
         .filter(|method| method.name != "unsubscribe")
+        .filter(|method| method.name != "get_state")
         .collect()
 }
 
@@ -1018,7 +1056,8 @@ fn format_swift_method(method: &MethodMetadata) -> String {
         format!("return vm.{}({})", swift_name, call_args)
     };
     format!(
-        "public func {swift_name}({args}){ret_sig} {{\n        {call}\n    }}\n\n",
+        "/// Calls the Rust VM `{rust_name}` action.\npublic func {swift_name}({args}){ret_sig} {{\n        {call}\n    }}\n\n",
+        rust_name = method.name,
         swift_name = swift_name,
         args = args,
         ret_sig = ret_sig,
@@ -1179,7 +1218,8 @@ fn format_kotlin_method(method: &MethodMetadata) -> String {
         format!("return vm.{}({})", kotlin_name, call_args)
     };
     format!(
-        "fun {kotlin_name}({args}): {ret_type} {{\n        {call}\n    }}\n\n",
+        "/** Calls the Rust VM `{rust_name}` action. */\nfun {kotlin_name}({args}): {ret_type} {{\n        {call}\n    }}\n\n",
+        rust_name = method.name,
         kotlin_name = kotlin_name,
         args = args,
         ret_type = ret_type,
@@ -1664,12 +1704,15 @@ mod tests {
 
         assert_eq!(files.files[0].path, "CounterViewModelBridge.swift");
         assert!(code.contains("// Generated by cross-kit-codegen."));
+        assert!(code.contains("/// SwiftUI-facing bridge for `CounterViewModel`."));
         assert!(code.contains("public final class CounterViewModelBridge"));
         assert!(code.contains("public init(app: AppViewModelBridge)"));
         assert!(code.contains("let vm = app.makeCounterVm()"));
         assert!(code.contains("private var observerId: Int64?"));
         assert!(code.contains("vm.unsubscribe(id: id)"));
         assert!(code.contains("public func incrementBy(deltaValue: Int32) -> CounterState"));
+        assert!(code.contains("/// Calls the Rust VM `increment_by` action."));
+        assert!(!code.contains("public func getState"));
         assert!(!code.contains("public func subscribe"));
     }
 
@@ -1700,10 +1743,19 @@ mod tests {
         assert!(
             code.contains("class CounterViewModelBridge private constructor(vm: CounterViewModel)")
         );
+        assert!(code.contains(" * Compose-facing bridge for CounterViewModel."));
         assert!(code.contains("private val handler = Handler(Looper.getMainLooper())"));
         assert!(code.contains("var state: CounterState by mutableStateOf(vm.getState())"));
         assert!(code.contains("private val observerId: Long = vm.subscribe(this)"));
+        assert!(
+            code.find("var state: CounterState by mutableStateOf(vm.getState())")
+                .unwrap()
+                < code
+                    .find("private val observerId: Long = vm.subscribe(this)")
+                    .unwrap()
+        );
         assert!(code.contains("fun incrementBy(deltaValue: Int): CounterState"));
+        assert!(code.contains("/** Calls the Rust VM `increment_by` action. */"));
         assert!(code.contains("fun close()"));
         assert!(code.contains("private var closed = false"));
         assert!(code.contains("if (closed) return"));
@@ -1792,6 +1844,13 @@ mod tests {
         let code = generate_kotlin_bridge_source(&list_metadata(), "com.crosskit.shared").unwrap();
 
         assert!(code.contains("val items: SnapshotStateList<ListItem> = mutableStateListOf()"));
+        assert!(
+            code.find("val items: SnapshotStateList<ListItem> = mutableStateListOf()")
+                .unwrap()
+                < code
+                    .find("private val observerId: Long = vm.subscribe(this)")
+                    .unwrap()
+        );
         assert!(code.contains("fun appendNow(): ListItem"));
         assert!(code.contains("fun applyDiffs(diffs: List<ListDiff>): Boolean"));
         assert!(code.contains("is ListDiff.Move ->"));
@@ -1817,6 +1876,11 @@ mod tests {
         assert_eq!(files.files[0].path, "CrossKitSharedBridge.swift");
         assert!(code.contains("import Combine"));
         assert!(code.contains("@MainActor"));
+        assert!(
+            code.contains(
+                "/// SwiftUI-facing root bridge that owns the generated VM bridge graph."
+            )
+        );
         assert!(code.contains("public final class CrossKitSharedBridge: ObservableObject"));
         assert!(code.contains("public let app: AppViewModelBridge"));
         assert!(code.contains("public let counter: CounterViewModelBridge"));
@@ -1859,6 +1923,9 @@ mod tests {
             "com/crosskit/shared/CrossKitSharedBridge.kt"
         );
         assert!(code.contains("package com.crosskit.shared"));
+        assert!(
+            code.contains(" * Compose-facing root bridge that owns the generated VM bridge graph.")
+        );
         assert!(code.contains("class CrossKitSharedBridge(initial: Int) : AutoCloseable"));
         assert!(code.contains("val app: AppViewModelBridge = AppViewModelBridge(initial)"));
         assert!(code.contains("val counter: CounterViewModelBridge = app.makeCounterVm()"));
@@ -1871,6 +1938,9 @@ mod tests {
         assert!(
             code.contains("fun rememberCrossKitSharedBridge(initial: Int): CrossKitSharedBridge")
         );
+        assert!(code.contains(
+            " * Remembers a [CrossKitSharedBridge] for the current composition and closes it on disposal."
+        ));
         assert!(code.contains("val kit = remember(initial) { CrossKitSharedBridge(initial) }"));
         assert!(code.contains("DisposableEffect(kit)"));
         assert!(code.contains("onDispose { kit.close() }"));

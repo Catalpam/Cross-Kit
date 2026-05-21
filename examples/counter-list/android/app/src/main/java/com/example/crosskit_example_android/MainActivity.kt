@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -37,7 +38,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             CrosskitexampleandroidTheme {
-                CrossKitApp()
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground
+                ) {
+                    CrossKitApp()
+                }
             }
         }
     }
@@ -45,7 +52,11 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun CrossKitApp(modifier: Modifier = Modifier) {
+    // Generated root container. It creates the app bridge and child bridges
+    // from Rust metadata and closes all of them when the composition leaves.
     val kit = rememberCrossKitSharedBridge(initial = 0)
+    // App state carries native navigation intents from Rust. The platform
+    // consumes `route` and calls `clearRoute` after handling it.
     val state = kit.app.state
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         val contentModifier = Modifier

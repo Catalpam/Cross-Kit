@@ -3,9 +3,13 @@ import Foundation
 import SwiftUI
 
 struct ContentView: View {
+    // One generated container exposes both the summary state VM and the cart
+    // diff-list VM. The app does not manually wire parent/child bridges.
     @StateObject private var kit = CrossKitShoppingCartBridge()
 
     private var state: ShoppingCartState {
+        // Totals, stock errors, coupon state, and checkout readiness are derived
+        // in Rust so iOS and Android render the same business rules.
         kit.shoppingCart.state
     }
 
@@ -60,6 +64,8 @@ struct ContentView: View {
                         .accessibilityIdentifier("product.row.\(product.id)")
                     Spacer()
                     Button("Add") {
+                        // Intent-style call: Rust validates stock, merges
+                        // existing rows, emits cart diffs, and recomputes totals.
                         kit.cart.addProduct(productId: product.id, quantity: 1)
                     }
                     .accessibilityIdentifier("product.add.\(product.id)")

@@ -450,7 +450,7 @@ android {{
 dependencies {{
     api(platform("androidx.compose:compose-bom:2024.04.01"))
     api("androidx.compose.runtime:runtime")
-    implementation("net.java.dev.jna:jna:5.14.0")
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
 }}
 
 publishing {{
@@ -649,7 +649,7 @@ mod tests {
         assert!(module.contains("compose = true"));
         assert!(module.contains("kotlinCompilerExtensionVersion = \"1.5.1\""));
         assert!(module.contains("api(\"androidx.compose.runtime:runtime\")"));
-        assert!(module.contains("net.java.dev.jna:jna:5.14.0"));
+        assert!(module.contains("net.java.dev.jna:jna:5.14.0@aar"));
         assert!(manifest.contains("<manifest"));
         let _ = fs::remove_dir_all(&temp);
     }
@@ -997,10 +997,13 @@ mod tests {
         assert!(pom.contains("<artifactId>public-shared</artifactId>"));
         assert!(pom.contains("<version>9.8.7</version>"));
         assert!(pom.contains("<artifactId>jna</artifactId>"));
+        assert!(pom.contains("<type>aar</type>"));
         assert!(pom.contains("<artifactId>runtime</artifactId>"));
         assert!(module.contains("\"group\": \"com.example.crosskit\""));
         assert!(module.contains("\"module\": \"public-shared\""));
         assert!(module.contains("\"version\": \"9.8.7\""));
+        assert!(module.contains("\"name\": \"jna\""));
+        assert!(module.contains("\"type\": \"aar\""));
         assert!(
             report
                 .module_dir
